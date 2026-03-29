@@ -20,7 +20,10 @@ import {
   RefreshCcw,
   Cloud,
   Map as MapIcon,
-  List as ListIcon
+  List as ListIcon,
+  MessageSquare,
+  MapPin,
+  DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -36,16 +39,26 @@ import {
 import { cn } from './lib/utils';
 
 // --- Types ---
-type Role = 'cliente' | 'admin' | 'coletor' | null;
-type MenuType = 'cliente' | 'dashboard' | 'coletor';
+type Role = 'cliente' | 'admin' | 'parceiro' | null;
+type MenuType = 'cliente' | 'dashboard' | 'parceiro' | 'cotacoes';
 
 type RequestStatus = 
+  | 'Pendente de Precificação'
+  | 'Disponível para Parceiros'
+  | 'Contraproposta Enviada'
   | 'Aguardando Coleta' 
   | 'Em Rota' 
   | 'Coletado' 
   | 'Em Trânsito'
   | 'Em Processamento' 
   | 'Finalizado (Financeiro)';
+
+interface HistoryEntry {
+  status: RequestStatus;
+  timestamp: string;
+  user?: string;
+  note?: string;
+}
 
 interface Request {
   id: string;
@@ -55,14 +68,114 @@ interface Request {
   clientName?: string;
   address?: string;
   collectorName?: string;
+  origin?: string;
+  destination?: string;
+  price?: number;
+  deadline?: string;
+  counterOffer?: {
+    price: number;
+    deadline: string;
+    partnerName: string;
+  };
+  history: HistoryEntry[];
+}
+
+interface Quote {
+  id: string;
+  driverName: string;
+  vehiclePlate: string;
+  price: number;
+  pickupLocation: string;
+  deliveryLocation: string;
+  status: 'Pendente' | 'Aprovado' | 'Recusado';
+  createdAt: string;
 }
 
 // --- Mock Data ---
 const INITIAL_REQUESTS: Request[] = [
-  { id: '#101', status: 'Aguardando Coleta', sla: '2 dias', priority: 'media', clientName: 'Ana Souza', address: 'Rua A, 123' },
-  { id: '#102', status: 'Em Rota', sla: '1 dia', priority: 'alta', clientName: 'Carlos Lima', address: 'Av. B, 456', collectorName: 'João Silva' },
-  { id: '#103', status: 'Em Trânsito', sla: '3 dias', priority: 'baixa', clientName: 'Julia Rosa', address: 'Rua C, 789', collectorName: 'Ricardo Oliveira' },
-  { id: '#104', status: 'Em Rota', sla: '4 horas', priority: 'alta', clientName: 'Marcos Paz', address: 'Rua D, 101', collectorName: 'Ricardo Oliveira' },
+  { 
+    id: '#101', 
+    status: 'Pendente de Precificação', 
+    sla: '2 dias', 
+    priority: 'media', 
+    clientName: 'Ana Souza', 
+    address: 'Rua A, 123',
+    history: [
+      { status: 'Pendente de Precificação', timestamp: '29/03/2026, 09:00:00', note: 'Solicitação criada pelo cliente' }
+    ]
+  },
+  { 
+    id: '#102', 
+    status: 'Disponível para Parceiros', 
+    sla: '1 dia', 
+    priority: 'alta', 
+    clientName: 'Carlos Lima', 
+    address: 'Av. B, 456', 
+    origin: 'Av. B, 456', 
+    destination: 'Centro Logístico Sul', 
+    price: 150.00, 
+    deadline: 'Hoje, 18:00',
+    history: [
+      { status: 'Pendente de Precificação', timestamp: '29/03/2026, 08:30:00' },
+      { status: 'Disponível para Parceiros', timestamp: '29/03/2026, 10:15:00', note: 'Precificado pelo administrador' }
+    ]
+  },
+  { 
+    id: '#103', 
+    status: 'Contraproposta Enviada', 
+    sla: '3 dias', 
+    priority: 'baixa', 
+    clientName: 'Julia Rosa', 
+    address: 'Rua C, 789', 
+    origin: 'Rua C, 789', 
+    destination: 'Centro Logístico Norte', 
+    price: 200.00, 
+    deadline: 'Amanhã', 
+    counterOffer: { price: 250.00, deadline: 'Hoje, 20:00', partnerName: 'Ricardo Oliveira' },
+    history: [
+      { status: 'Pendente de Precificação', timestamp: '28/03/2026, 14:00:00' },
+      { status: 'Disponível para Parceiros', timestamp: '28/03/2026, 16:00:00' },
+      { status: 'Contraproposta Enviada', timestamp: '29/03/2026, 07:45:00', note: 'Contraproposta de R$ 250,00 enviada por Ricardo Oliveira' }
+    ]
+  },
+  { 
+    id: '#104', 
+    status: 'Em Rota', 
+    sla: '4 horas', 
+    priority: 'alta', 
+    clientName: 'Marcos Paz', 
+    address: 'Rua D, 101', 
+    collectorName: 'Ricardo Oliveira',
+    history: [
+      { status: 'Pendente de Precificação', timestamp: '29/03/2026, 06:00:00' },
+      { status: 'Disponível para Parceiros', timestamp: '29/03/2026, 07:00:00' },
+      { status: 'Aguardando Coleta', timestamp: '29/03/2026, 07:30:00', note: 'Aceito por Ricardo Oliveira' },
+      { status: 'Em Rota', timestamp: '29/03/2026, 08:00:00', note: 'Parceiro a caminho' }
+    ]
+  },
+];
+
+const INITIAL_QUOTES: Quote[] = [
+  { 
+    id: 'Q-001', 
+    driverName: 'Roberto Santos', 
+    vehiclePlate: 'ABC-1234', 
+    price: 450.00, 
+    pickupLocation: 'São Paulo, SP', 
+    deliveryLocation: 'Campinas, SP', 
+    status: 'Pendente',
+    createdAt: '2026-03-29T10:00:00Z'
+  },
+  { 
+    id: 'Q-002', 
+    driverName: 'Marcos Oliveira', 
+    vehiclePlate: 'XYZ-9876', 
+    price: 380.00, 
+    pickupLocation: 'Rio de Janeiro, RJ', 
+    deliveryLocation: 'Niterói, RJ', 
+    status: 'Pendente',
+    createdAt: '2026-03-29T11:30:00Z'
+  }
 ];
 
 const CHART_DATA = [
@@ -145,6 +258,32 @@ const StatusTimelineItem = ({
   </div>
 );
 
+const RequestHistory = ({ history }: { history: HistoryEntry[] }) => (
+  <div className="space-y-4">
+    {history.map((entry, idx) => (
+      <div key={idx} className="flex gap-4 relative">
+        {idx !== history.length - 1 && (
+          <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-slate-100" />
+        )}
+        <div className={cn(
+          "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 z-10",
+          idx === history.length - 1 ? "bg-blue-500 border-blue-500" : "bg-white border-slate-200"
+        )}>
+          <div className={cn(
+            "w-2 h-2 rounded-full",
+            idx === history.length - 1 ? "bg-white" : "bg-slate-300"
+          )} />
+        </div>
+        <div className="pb-6">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{entry.timestamp}</p>
+          <p className="font-bold text-slate-800">{entry.status}</p>
+          {entry.note && <p className="text-sm text-slate-500 mt-1">{entry.note}</p>}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 export default function App() {
   const [userRole, setUserRole] = useState<Role>(null);
   const [activeMenu, setActiveMenu] = useState<MenuType>('cliente');
@@ -158,8 +297,18 @@ export default function App() {
   const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
   const [dashboardSortBy, setDashboardSortBy] = useState<'id' | 'status' | 'sla'>('id');
   const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'map'>('list');
+  const [parceiroTab, setParceiroTab] = useState<'coletas' | 'fretes'>('coletas');
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [quotes, setQuotes] = useState<Quote[]>(INITIAL_QUOTES);
+  const [quotingRequestId, setQuotingRequestId] = useState<string | null>(null);
+  const [pricingRequestId, setPricingRequestId] = useState<string | null>(null);
+  const [reviewingCounterOfferId, setReviewingCounterOfferId] = useState<string | null>(null);
+  const [counterOfferingId, setCounterOfferingId] = useState<string | null>(null);
+  const [viewHistoryId, setViewHistoryId] = useState<string | null>(null);
+  const [counterOfferDay, setCounterOfferDay] = useState<'hoje' | 'amanha' | 'outro'>('hoje');
+  const [counterOfferDate, setCounterOfferDate] = useState<string>('');
+  const [counterOfferTime, setCounterOfferTime] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,11 +381,14 @@ export default function App() {
     const newId = `#${Math.floor(100 + Math.random() * 900)}`;
     const newRequest: Request = {
       id: newId,
-      status: 'Aguardando Coleta',
+      status: 'Pendente de Precificação',
       sla: '3 dias',
       priority: 'media',
       clientName: 'Você',
-      address: 'Seu Endereço'
+      address: 'Seu Endereço',
+      history: [
+        { status: 'Pendente de Precificação', timestamp: new Date().toLocaleString('pt-BR'), note: 'Solicitação criada pelo cliente' }
+      ]
     };
     setRequests([newRequest, ...requests]);
     setUserRequestId(newId);
@@ -244,25 +396,103 @@ export default function App() {
   };
 
   const handleAcceptOrder = (id: string, collectorName: string = 'João Silva') => {
-    setRequests(requests.map(r => r.id === id ? { ...r, status: 'Em Rota', collectorName } : r));
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'Em Rota', 
+      collectorName,
+      history: [...r.history, { status: 'Em Rota', timestamp: new Date().toLocaleString('pt-BR'), note: `Aceito por ${collectorName}` }]
+    } : r));
     setSelectedRequestId(id);
     showNotification('info', `Você assumiu a coleta ${id}!`);
+  };
+
+  const handleQuoteSubmit = (quote: Omit<Quote, 'id' | 'status' | 'createdAt'>) => {
+    const newQuote: Quote = {
+      ...quote,
+      id: `Q-${Math.floor(100 + Math.random() * 900)}`,
+      status: 'Pendente',
+      createdAt: new Date().toISOString()
+    };
+    setQuotes([newQuote, ...quotes]);
+    showNotification('success', 'Cotação enviada com sucesso!');
+  };
+
+  const handleCounterOfferSubmit = (id: string, price: number, deadline: string, partnerName: string) => {
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'Contraproposta Enviada', 
+      counterOffer: { price, deadline, partnerName },
+      history: [...r.history, { status: 'Contraproposta Enviada', timestamp: new Date().toLocaleString('pt-BR'), note: `Contraproposta de R$ ${price.toFixed(2)} enviada por ${partnerName}` }]
+    } : r));
+    showNotification('success', 'Contraproposta enviada ao administrador!');
+  };
+
+  const handlePricingSubmit = (id: string, origin: string, destination: string, price: number, deadline: string) => {
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'Disponível para Parceiros', 
+      origin, 
+      destination, 
+      price, 
+      deadline,
+      history: [...r.history, { status: 'Disponível para Parceiros', timestamp: new Date().toLocaleString('pt-BR'), note: `Precificado em R$ ${price.toFixed(2)}` }]
+    } : r));
+    showNotification('success', 'Solicitação precificada e liberada para parceiros!');
+  };
+
+  const handleCounterOfferDecision = (id: string, decision: 'Aprovar' | 'Reprovar') => {
+    setRequests(requests.map(r => {
+      if (r.id === id) {
+        if (decision === 'Aprovar') {
+          return { 
+            ...r, 
+            status: 'Aguardando Coleta', 
+            price: r.counterOffer?.price, 
+            deadline: r.counterOffer?.deadline,
+            collectorName: r.counterOffer?.partnerName,
+            counterOffer: undefined,
+            history: [...r.history, { status: 'Aguardando Coleta', timestamp: new Date().toLocaleString('pt-BR'), note: `Contraproposta aprovada pelo administrador` }]
+          };
+        } else {
+          return { 
+            ...r, 
+            status: 'Disponível para Parceiros', 
+            counterOffer: undefined,
+            history: [...r.history, { status: 'Disponível para Parceiros', timestamp: new Date().toLocaleString('pt-BR'), note: `Contraproposta reprovada pelo administrador` }]
+          };
+        }
+      }
+      return r;
+    }));
+    showNotification(decision === 'Aprovar' ? 'success' : 'info', `Contraproposta ${decision.toLowerCase()}da.`);
   };
 
   const handleFinalizeOrder = () => {
     if (!selectedRequestId) return;
     
     // Simulate the journey
-    setRequests(prev => prev.map(r => r.id === selectedRequestId ? { ...r, status: 'Coletado' } : r));
+    setRequests(prev => prev.map(r => r.id === selectedRequestId ? { 
+      ...r, 
+      status: 'Coletado',
+      history: [...r.history, { status: 'Coletado', timestamp: new Date().toLocaleString('pt-BR'), note: 'Coleta finalizada pelo parceiro' }]
+    } : r));
     showNotification('success', 'Pedido coletado com sucesso!');
     
     setTimeout(() => {
-      setRequests(prev => prev.map(r => r.id === selectedRequestId ? { ...r, status: 'Em Processamento' } : r));
+      setRequests(prev => prev.map(r => r.id === selectedRequestId ? { 
+        ...r, 
+        status: 'Em Processamento',
+        history: [...r.history, { status: 'Em Processamento', timestamp: new Date().toLocaleString('pt-BR'), note: 'Chegada no centro logístico' }]
+      } : r));
       showNotification('info', 'Pedido em processamento no centro logístico.');
     }, 3000);
 
     setTimeout(() => {
-      setRequests(prev => prev.map(r => r.id === selectedRequestId ? { ...r, status: 'Finalizado (Financeiro)' } : r));
+      setRequests(prev => prev.map(r => r.id === selectedRequestId ? { 
+        ...r, 
+        status: 'Finalizado (Financeiro)',
+        history: [...r.history, { status: 'Finalizado (Financeiro)', timestamp: new Date().toLocaleString('pt-BR'), note: 'Processamento concluído' }]
+      } : r));
       showNotification('success', 'Tratativas concluídas. O financeiro entrará em contato.');
       setSelectedRequestId(null);
     }, 6000);
@@ -282,9 +512,9 @@ export default function App() {
   const handleLogin = (role: Role) => {
     setUserRole(role);
     if (role === 'admin') setActiveMenu('dashboard');
-    if (role === 'coletor') setActiveMenu('coletor');
+    if (role === 'parceiro') setActiveMenu('parceiro');
     if (role === 'cliente') setActiveMenu('cliente');
-    showNotification('success', `Bem-vindo! Logado como ${role === 'admin' ? 'Administrador' : role === 'coletor' ? 'Coletor' : 'Cliente'}`);
+    showNotification('success', `Bem-vindo! Logado como ${role === 'admin' ? 'Administrador' : role === 'parceiro' ? 'Parceiro Logístico' : 'Cliente'}`);
   };
 
   if (!userRole) {
@@ -330,15 +560,15 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => handleLogin('coletor')}
+                onClick={() => handleLogin('parceiro')}
                 className="w-full group flex items-center gap-4 p-5 rounded-2xl border-2 border-slate-100 hover:border-[#2980B9] hover:bg-blue-50 transition-all text-left"
               >
                 <div className="bg-slate-100 group-hover:bg-[#2980B9] p-3 rounded-xl transition-colors">
                   <Truck className="text-slate-500 group-hover:text-white" size={24} />
                 </div>
                 <div>
-                  <p className="font-bold text-slate-800">Sou Coletor</p>
-                  <p className="text-xs text-slate-500">Quero realizar coletas</p>
+                  <p className="font-bold text-slate-800">Sou Parceiro Logístico</p>
+                  <p className="text-xs text-slate-500">Quero realizar coletas ou fretes</p>
                 </div>
               </button>
 
@@ -366,11 +596,27 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex font-sans text-slate-900">
+    <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 relative overflow-x-hidden">
+      {/* Mobile Backdrop */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
       <aside className={cn(
-        "bg-white border-r border-slate-200 transition-all duration-300 flex flex-col sticky top-0 h-screen",
-        isSidebarOpen ? "w-72" : "w-20"
+        "bg-white border-r border-slate-200 transition-all duration-300 flex flex-col z-50",
+        "fixed inset-y-0 left-0 h-full md:sticky md:top-0 md:h-screen",
+        isSidebarOpen 
+          ? "w-72 translate-x-0" 
+          : "w-72 -translate-x-full md:w-20 md:translate-x-0"
       )}>
         <div className="p-6 flex items-center gap-3 border-b border-slate-100 h-20">
           <div className="bg-[#2980B9] p-2 rounded-lg shrink-0">
@@ -397,20 +643,36 @@ export default function App() {
             />
           )}
           {userRole === 'admin' && (
-            <SidebarItem 
-              icon={LayoutDashboard} 
-              label={isSidebarOpen ? "Dashboard Logístico" : ""} 
-              active={activeMenu === 'dashboard'} 
-              onClick={() => setActiveMenu('dashboard')} 
-            />
+            <>
+              <SidebarItem 
+                icon={LayoutDashboard} 
+                label={isSidebarOpen ? "Dashboard Logístico" : ""} 
+                active={activeMenu === 'dashboard'} 
+                onClick={() => setActiveMenu('dashboard')} 
+              />
+              <SidebarItem 
+                icon={ListIcon} 
+                label={isSidebarOpen ? "Todas as Cotações" : ""} 
+                active={activeMenu === 'cotacoes'} 
+                onClick={() => setActiveMenu('cotacoes')} 
+              />
+            </>
           )}
-          {userRole === 'coletor' && (
-            <SidebarItem 
-              icon={Truck} 
-              label={isSidebarOpen ? "Área do Coletor" : ""} 
-              active={activeMenu === 'coletor'} 
-              onClick={() => setActiveMenu('coletor')} 
-            />
+          {userRole === 'parceiro' && (
+            <>
+              <SidebarItem 
+                icon={Truck} 
+                label={isSidebarOpen ? "Área do Parceiro" : ""} 
+                active={activeMenu === 'parceiro'} 
+                onClick={() => setActiveMenu('parceiro')} 
+              />
+              <SidebarItem 
+                icon={ListIcon} 
+                label={isSidebarOpen ? "Minhas Cotações" : ""} 
+                active={activeMenu === 'cotacoes'} 
+                onClick={() => setActiveMenu('cotacoes')} 
+              />
+            </>
           )}
         </nav>
 
@@ -436,8 +698,25 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        <AnimatePresence mode="wait">
+      <main className="flex-1 overflow-y-auto min-w-0">
+        {/* Mobile Header */}
+        <header className="bg-white border-b border-slate-100 p-4 flex items-center justify-between md:hidden sticky top-0 z-30">
+          <div className="flex items-center gap-2">
+            <div className="bg-[#2980B9] p-1.5 rounded-lg">
+              <Package className="text-white" size={18} />
+            </div>
+            <h1 className="text-lg font-bold text-[#2980B9]">RetiraAqui</h1>
+          </div>
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
+          >
+            <Menu size={24} />
+          </button>
+        </header>
+
+        <div className="p-4 md:p-8">
+          <AnimatePresence mode="wait">
           {activeMenu === 'cliente' && (
             <motion.div
               key="cliente"
@@ -587,16 +866,23 @@ export default function App() {
                       const currentIdx = stages.findIndex(s => s.status === req.status);
 
                       return (
-                        <div className="space-y-2">
-                          {stages.map((stage, idx) => (
-                            <StatusTimelineItem 
-                              key={idx}
-                              label={stage.label}
-                              description={stage.desc}
-                              active={idx === currentIdx}
-                              completed={idx < currentIdx}
-                            />
-                          ))}
+                        <div className="space-y-8">
+                          <div className="space-y-2">
+                            {stages.map((stage, idx) => (
+                              <StatusTimelineItem 
+                                key={idx}
+                                label={stage.label}
+                                description={stage.desc}
+                                active={idx === currentIdx}
+                                completed={idx < currentIdx}
+                              />
+                            ))}
+                          </div>
+                          
+                          <div className="pt-8 border-t border-slate-100">
+                            <h4 className="text-lg font-bold text-slate-800 mb-6">Histórico Detalhado</h4>
+                            <RequestHistory history={req.history} />
+                          </div>
                         </div>
                       );
                     })()}
@@ -626,10 +912,130 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <MetricCard label="Novas Solicitações" value={requests.filter(r => r.status === 'Aguardando Coleta').length.toString()} icon={Package} color="bg-[#2980B9]" />
-                <MetricCard label="SLA em Alerta" value={requests.filter(r => r.priority === 'alta' && !['Finalizado (Financeiro)'].includes(r.status)).length.toString()} icon={AlertCircle} color="bg-orange-500" />
+                <MetricCard label="Pendentes Precificação" value={requests.filter(r => r.status === 'Pendente de Precificação').length.toString()} icon={Package} color="bg-orange-500" />
+                <MetricCard label="SLA em Alerta" value={requests.filter(r => r.priority === 'alta' && !['Finalizado (Financeiro)'].includes(r.status)).length.toString()} icon={AlertCircle} color="bg-red-500" />
                 <MetricCard label="Coletas Hoje" value={requests.filter(r => r.status === 'Finalizado (Financeiro)').length.toString()} icon={Truck} color="bg-[#2ECC71]" />
               </div>
+
+              {/* Seção de Precificação (ADM) */}
+              {requests.some(r => r.status === 'Pendente de Precificação') && (
+                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                  <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <AlertCircle className="text-orange-500" size={20} />
+                    Solicitações Pendentes de Precificação
+                  </h3>
+                  <div className="space-y-4">
+                    {requests.filter(r => r.status === 'Pendente de Precificação').map(req => (
+                      <div key={req.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-slate-800 text-lg">{req.id}</p>
+                            <p className="text-sm text-slate-500">Endereço: {req.address}</p>
+                          </div>
+                          <button 
+                            onClick={() => setPricingRequestId(pricingRequestId === req.id ? null : req.id)}
+                            className="bg-[#2980B9] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#2471a3] transition-all"
+                          >
+                            {pricingRequestId === req.id ? 'Fechar' : 'Precificar'}
+                          </button>
+                        </div>
+
+                        {pricingRequestId === req.id && (
+                          <form 
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const formData = new FormData(e.currentTarget);
+                              handlePricingSubmit(
+                                req.id,
+                                formData.get('origin') as string,
+                                formData.get('destination') as string,
+                                Number(formData.get('price')),
+                                formData.get('deadline') as string
+                              );
+                              setPricingRequestId(null);
+                            }}
+                            className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200"
+                          >
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-500 uppercase">Destino Inicial</label>
+                              <input name="origin" required defaultValue={req.address} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-500 uppercase">Destino Final</label>
+                              <input name="destination" required placeholder="Ex: Centro Logístico Norte" className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-500 uppercase">Valor do Frete (R$)</label>
+                              <input name="price" type="number" step="0.01" required placeholder="0,00" className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-500 uppercase">Prazo</label>
+                              <input name="deadline" required placeholder="Ex: Hoje, 18:00" className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <button type="submit" className="md:col-span-2 bg-[#2ECC71] text-white py-3 rounded-xl font-bold hover:bg-[#27ae60] transition-all">
+                              Liberar para Parceiros
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Seção de Contrapropostas (ADM) */}
+              {requests.some(r => r.status === 'Contraproposta Enviada') && (
+                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                  <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <MessageSquare className="text-blue-500" size={20} />
+                    Contrapropostas de Parceiros
+                  </h3>
+                  <div className="space-y-4">
+                    {requests.filter(r => r.status === 'Contraproposta Enviada').map(req => (
+                      <div key={req.id} className="p-6 bg-blue-50 rounded-2xl border border-blue-100 flex flex-col gap-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-slate-800 text-lg">{req.id}</p>
+                            <p className="text-sm text-slate-600">Proposta de: <span className="font-bold">{req.counterOffer?.partnerName}</span></p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleCounterOfferDecision(req.id, 'Aprovar')}
+                              className="bg-[#2ECC71] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#27ae60] transition-all"
+                            >
+                              Aprovar
+                            </button>
+                            <button 
+                              onClick={() => handleCounterOfferDecision(req.id, 'Reprovar')}
+                              className="bg-red-500 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-red-600 transition-all"
+                            >
+                              Reprovar
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="bg-white p-3 rounded-xl border border-blue-100">
+                            <p className="text-slate-400 uppercase text-[10px] font-bold">Valor Original</p>
+                            <p className="font-bold text-slate-700">R$ {req.price?.toFixed(2)}</p>
+                          </div>
+                          <div className="bg-white p-3 rounded-xl border border-blue-100">
+                            <p className="text-blue-400 uppercase text-[10px] font-bold">Nova Oferta</p>
+                            <p className="font-bold text-blue-700">R$ {req.counterOffer?.price.toFixed(2)}</p>
+                          </div>
+                          <div className="bg-white p-3 rounded-xl border border-blue-100">
+                            <p className="text-slate-400 uppercase text-[10px] font-bold">Prazo Original</p>
+                            <p className="font-bold text-slate-700">{req.deadline}</p>
+                          </div>
+                          <div className="bg-white p-3 rounded-xl border border-blue-100">
+                            <p className="text-blue-400 uppercase text-[10px] font-bold">Novo Prazo</p>
+                            <p className="font-bold text-blue-700">{req.counterOffer?.deadline}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
@@ -687,6 +1093,9 @@ export default function App() {
                         className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="Todos">Todos Status</option>
+                        <option value="Pendente de Precificação">Pendente de Precificação</option>
+                        <option value="Disponível para Parceiros">Disponível para Parceiros</option>
+                        <option value="Contraproposta Enviada">Contraproposta Enviada</option>
                         <option value="Aguardando Coleta">Aguardando Coleta</option>
                         <option value="Em Rota">Em Rota</option>
                         <option value="Coletado">Coletado</option>
@@ -714,6 +1123,7 @@ export default function App() {
                           <th className="pb-4 font-semibold">Coletor</th>
                           <th className="pb-4 font-semibold">Status</th>
                           <th className="pb-4 font-semibold">SLA Restante</th>
+                          <th className="pb-4 font-semibold">Ações</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -747,7 +1157,10 @@ export default function App() {
                                 req.status === 'Coletado' ? "bg-purple-50 text-purple-600" :
                                 req.status === 'Em Trânsito' ? "bg-teal-50 text-teal-600" :
                                 req.status === 'Em Processamento' ? "bg-amber-50 text-amber-600" :
-                                "bg-orange-50 text-orange-600"
+                                req.status === 'Pendente de Precificação' ? "bg-orange-50 text-orange-600" :
+                                req.status === 'Disponível para Parceiros' ? "bg-blue-50 text-blue-600" :
+                                req.status === 'Contraproposta Enviada' ? "bg-indigo-50 text-indigo-600" :
+                                "bg-slate-50 text-slate-600"
                               )}>
                                 {req.status}
                               </span>
@@ -757,6 +1170,14 @@ export default function App() {
                                 <Clock size={14} />
                                 {req.status === 'Finalizado (Financeiro)' ? '-' : req.sla}
                               </div>
+                            </td>
+                            <td className="py-4">
+                              <button 
+                                onClick={() => setViewHistoryId(req.id)}
+                                className="text-xs font-bold text-[#2980B9] hover:underline"
+                              >
+                                Ver Histórico
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -768,134 +1189,433 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeMenu === 'coletor' && (
+          {activeMenu === 'parceiro' && (
             <motion.div
-              key="coletor"
+              key="parceiro"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="max-w-2xl mx-auto"
+              className="max-w-4xl mx-auto"
             >
-              <div className="mb-8">
-                <h2 className="text-3xl font-bold text-slate-800">🚚 Área do Coletor</h2>
-                <p className="text-slate-500 mt-2">Gerencie suas coletas e atualize o status em tempo real.</p>
+              <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-3xl font-bold text-slate-800">🤝 Área do Parceiro</h2>
+                  <p className="text-slate-500 mt-2">Gerencie suas coletas rápidas e negocie fretes de longa distância.</p>
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                  <button 
+                    onClick={() => setParceiroTab('coletas')}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                      parceiroTab === 'coletas' ? "bg-white text-[#2980B9] shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Coletas Rápidas
+                  </button>
+                  <button 
+                    onClick={() => setParceiroTab('fretes')}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                      parceiroTab === 'fretes' ? "bg-white text-orange-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Fretes (Cotação)
+                  </button>
+                </div>
               </div>
 
-              {!selectedRequestId ? (
+              {parceiroTab === 'coletas' ? (
+                /* Mural de Solicitações Liberadas */
                 <div className="space-y-6">
-                  <h3 className="text-xl font-bold text-slate-700">Ordens Disponíveis</h3>
-                  {availableOrders.length > 0 ? (
-                    <div className="grid gap-4">
-                      {availableOrders.map(order => (
-                        <div key={order.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
-                          <div>
-                            <p className="font-bold text-slate-800 text-lg">{order.id}</p>
-                            <p className="text-xs text-slate-400 font-medium">{order.clientName} • {order.address}</p>
-                            <div className="flex items-center gap-4 mt-1">
-                              <span className="text-sm text-slate-500 flex items-center gap-1">
-                                <Clock size={14} /> {order.sla}
-                              </span>
-                              <span className={cn(
-                                "text-[10px] uppercase font-bold px-2 py-0.5 rounded",
-                                order.priority === 'alta' ? "bg-red-50 text-red-500" : "bg-slate-50 text-slate-500"
-                              )}>
-                                Prioridade {order.priority}
-                              </span>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-slate-700">Mural de Solicitações</h3>
+                    <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
+                      {requests.filter(r => r.status === 'Disponível para Parceiros').length} Disponíveis
+                    </span>
+                  </div>
+
+                  {requests.filter(r => r.status === 'Disponível para Parceiros').length > 0 ? (
+                    <div className="grid gap-6">
+                      {requests.filter(r => r.status === 'Disponível para Parceiros').map(req => (
+                        <div key={req.id} className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
+                          <div className="flex flex-col md:flex-row justify-between gap-6">
+                            <div className="space-y-4 flex-1">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-blue-50 p-2 rounded-lg">
+                                  <Package className="text-[#2980B9]" size={20} />
+                                </div>
+                                <p className="font-bold text-slate-800 text-xl">{req.id}</p>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="flex items-start gap-2">
+                                  <MapPin size={16} className="text-red-500 mt-1 shrink-0" />
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Retirada</p>
+                                    <p className="text-sm text-slate-700 font-medium">{req.origin || req.address}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <MapPin size={16} className="text-green-500 mt-1 shrink-0" />
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Destino</p>
+                                    <p className="text-sm text-slate-700 font-medium">{req.destination}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap gap-4 pt-2">
+                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                                  <DollarSign size={14} className="text-[#2ECC71]" />
+                                  <span className="text-sm font-bold text-slate-700">R$ {req.price?.toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                                  <Clock size={14} className="text-blue-500" />
+                                  <span className="text-sm font-bold text-slate-700">{req.deadline}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3 justify-center min-w-[200px]">
+                              <button 
+                                onClick={() => handleAcceptOrder(req.id, 'Parceiro Logístico')}
+                                className="w-full bg-[#2ECC71] text-white py-3 rounded-xl font-bold hover:bg-[#27ae60] transition-all shadow-lg shadow-green-100"
+                              >
+                                Aceitar Frete
+                              </button>
+                              <button 
+                                onClick={() => setCounterOfferingId(counterOfferingId === req.id ? null : req.id)}
+                                className="w-full bg-white border-2 border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all"
+                              >
+                                {counterOfferingId === req.id ? 'Cancelar' : 'Fazer Contraproposta'}
+                              </button>
                             </div>
                           </div>
-                          <button 
-                            onClick={() => handleAcceptOrder(order.id)}
-                            className="bg-[#2980B9] text-white px-6 py-2 rounded-xl font-bold hover:bg-[#2471a3] transition-all"
-                          >
-                            Assumir Coleta
-                          </button>
+
+                          {counterOfferingId === req.id && (
+                            <form 
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const formData = new FormData(e.currentTarget);
+                                let finalDeadline = '';
+                                if (counterOfferDay === 'hoje') finalDeadline = `Hoje, ${counterOfferTime}`;
+                                else if (counterOfferDay === 'amanha') finalDeadline = `Amanhã, ${counterOfferTime}`;
+                                else finalDeadline = `${counterOfferDate}, ${counterOfferTime}`;
+
+                                handleCounterOfferSubmit(
+                                  req.id,
+                                  Number(formData.get('price')),
+                                  finalDeadline,
+                                  'Parceiro Logístico'
+                                );
+                                setCounterOfferingId(null);
+                                setCounterOfferDay('hoje');
+                                setCounterOfferDate('');
+                                setCounterOfferTime('');
+                              }}
+                              className="mt-6 pt-6 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4"
+                            >
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Seu Valor (R$)</label>
+                                <input name="price" type="number" step="0.01" required placeholder="Ex: 180,00" className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                              </div>
+                              
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Seu Prazo (Dia)</label>
+                                <select 
+                                  value={counterOfferDay}
+                                  onChange={(e) => setCounterOfferDay(e.target.value as any)}
+                                  className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="hoje">Hoje</option>
+                                  <option value="amanha">Amanhã</option>
+                                  <option value="outro">Outro Dia</option>
+                                </select>
+                              </div>
+
+                              {counterOfferDay === 'outro' && (
+                                <div className="space-y-1">
+                                  <label className="text-xs font-bold text-slate-500 uppercase">Data Específica</label>
+                                  <input 
+                                    type="date" 
+                                    required 
+                                    value={counterOfferDate}
+                                    onChange={(e) => setCounterOfferDate(e.target.value)}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" 
+                                  />
+                                </div>
+                              )}
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Horário Estimado</label>
+                                <input 
+                                  type="time" 
+                                  required 
+                                  value={counterOfferTime}
+                                  onChange={(e) => setCounterOfferTime(e.target.value)}
+                                  className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" 
+                                />
+                              </div>
+
+                              <button type="submit" className="md:col-span-2 bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-700 transition-all">
+                                Enviar Contraproposta
+                              </button>
+                            </form>
+                          )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="bg-white p-12 rounded-3xl border border-dashed border-slate-200 text-center">
-                      <Package className="mx-auto text-slate-200 mb-4" size={48} />
-                      <p className="text-slate-400">Nenhuma ordem disponível no momento.</p>
+                    <div className="bg-white p-16 rounded-[40px] border border-dashed border-slate-200 text-center">
+                      <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Package className="text-slate-300" size={40} />
+                      </div>
+                      <h4 className="text-xl font-bold text-slate-800">Mural Vazio</h4>
+                      <p className="text-slate-400 mt-2 max-w-xs mx-auto">Aguarde novas solicitações serem liberadas pelo administrador.</p>
+                    </div>
+                  )}
+
+                  {/* Atendimento Atual */}
+                  {selectedRequestId && (
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 space-y-8 mt-12">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider">Em Atendimento</span>
+                          <h3 className="text-2xl font-bold text-slate-800 mt-2">Ordem {selectedRequestId}</h3>
+                        </div>
+                        <button onClick={() => setSelectedRequestId(null)} className="text-slate-400 hover:text-red-500">Fechar Detalhes</button>
+                      </div>
+
+                      <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-blue-100 p-3 rounded-full">
+                            <Truck className="text-[#2980B9]" size={24} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">Status da Coleta</p>
+                            <p className="text-xs text-slate-500">Atualize o andamento do pedido</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 mt-6">
+                          <button 
+                            onClick={() => setRequests(prev => prev.map(r => r.id === selectedRequestId ? { 
+                              ...r, 
+                              status: 'Em Rota',
+                              history: [...r.history, { status: 'Em Rota', timestamp: new Date().toLocaleString('pt-BR'), note: 'Parceiro chegou no local' }]
+                            } : r))}
+                            className={cn(
+                              "py-3 rounded-xl font-bold text-sm transition-all",
+                              requests.find(r => r.id === selectedRequestId)?.status === 'Em Rota' 
+                                ? "bg-blue-600 text-white shadow-lg shadow-blue-200" 
+                                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                            )}
+                          >
+                            Cheguei no Local
+                          </button>
+                          <button 
+                            onClick={handleFinalizeOrder}
+                            className="bg-[#2ECC71] text-white py-3 rounded-xl font-bold text-sm hover:bg-[#27ae60] transition-all"
+                          >
+                            Finalizar Coleta
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-8">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider">Em Atendimento</span>
-                      <h3 className="text-2xl font-bold text-slate-800 mt-2">Ordem {selectedRequestId}</h3>
+                /* Unified Motorista/Fretes View */
+                <div className="space-y-6">
+                  {quotingRequestId ? (
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 space-y-6">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-slate-800">Nova Cotação para {quotingRequestId}</h3>
+                        <button onClick={() => setQuotingRequestId(null)} className="text-slate-400 hover:text-red-500">Cancelar</button>
+                      </div>
+                      
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const formData = new FormData(e.currentTarget);
+                        handleQuoteSubmit({
+                          driverName: formData.get('driverName') as string,
+                          vehiclePlate: formData.get('vehiclePlate') as string,
+                          price: Number(formData.get('price')),
+                          pickupLocation: formData.get('pickupLocation') as string,
+                          deliveryLocation: formData.get('deliveryLocation') as string,
+                        });
+                        setQuotingRequestId(null);
+                      }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Seu Nome</label>
+                          <input name="driverName" required className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="Nome completo" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Placa do Veículo</label>
+                          <input name="vehiclePlate" required className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="AAA-0000" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Preço do Frete (R$)</label>
+                          <input name="price" type="number" step="0.01" required className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="0,00" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Local de Retirada</label>
+                          <input name="pickupLocation" required className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" defaultValue={requests.find(r => r.id === quotingRequestId)?.address} />
+                        </div>
+                        <div className="md:col-span-2 space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Local de Entrega (Centro Logístico)</label>
+                          <input name="deliveryLocation" required className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" defaultValue="Centro de Distribuição Norte - SP" />
+                        </div>
+                        <button type="submit" className="md:col-span-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl shadow-lg transition-all">
+                          Enviar Cotação de Frete
+                        </button>
+                      </form>
                     </div>
-                    <button 
-                      onClick={() => setSelectedRequestId(null)}
-                      className="text-slate-400 hover:text-red-500 transition-colors"
-                    >
-                      Cancelar Atendimento
-                    </button>
-                  </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Nome do Motorista</label>
-                        <input 
-                          type="text"
-                          id="driver-name"
-                          placeholder="Ex: João Silva"
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#2980B9] focus:border-transparent outline-none transition-all"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Placa do Veículo</label>
-                        <input 
-                          type="text"
-                          id="vehicle-plate"
-                          placeholder="AAA-0000"
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#2980B9] focus:border-transparent outline-none transition-all"
-                        />
+                  ) : (
+                    <div className="space-y-6">
+                      <h3 className="text-xl font-bold text-slate-700">Fretes Disponíveis para Cotação</h3>
+                      <div className="grid gap-4">
+                        {availableOrders.map(order => (
+                          <div key={order.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between md:items-center gap-4">
+                            <div>
+                              <p className="font-bold text-slate-800 text-lg">{order.id}</p>
+                              <p className="text-sm text-slate-600">{order.address}</p>
+                              <p className="text-xs text-slate-400 mt-1">Cliente: {order.clientName}</p>
+                            </div>
+                            <button 
+                              onClick={() => setQuotingRequestId(order.id)}
+                              className="bg-orange-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-orange-600 transition-all"
+                            >
+                              Fazer Cotação
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-
-                  <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-blue-100 p-3 rounded-full">
-                        <Truck className="text-[#2980B9]" size={24} />
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-500">Endereço de Coleta</p>
-                        <p className="font-bold text-slate-800">{selectedRequest?.address || 'Rua das Flores, 123 - Centro'}</p>
-                        <p className="text-xs text-slate-400">Cliente: {selectedRequest?.clientName || 'João Silva'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                    <div className="space-y-4 pt-4">
-                      <button 
-                        onClick={() => {
-                          const name = (document.getElementById('driver-name') as HTMLInputElement)?.value || 'João Silva';
-                          handleAcceptOrder(selectedRequestId!, name);
-                          showNotification('info', `Notificação enviada ao cliente: O motorista ${name} chegou!`);
-                        }}
-                        className="w-full bg-[#2980B9] hover:bg-[#2471a3] text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
-                      >
-                        Confirmar Chegada no Cliente
-                      </button>
-                    
-                    <button 
-                      onClick={handleFinalizeOrder}
-                      className="w-full bg-[#2ECC71] hover:bg-[#27ae60] text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 transition-all flex items-center justify-center gap-2"
-                    >
-                      Finalizar e Entregar no Centro Logístico
-                    </button>
-                  </div>
+                  )}
                 </div>
               )}
             </motion.div>
           )}
+
+          {activeMenu === 'cotacoes' && (
+            <motion.div
+              key="cotacoes"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              <div>
+                <h2 className="text-3xl font-bold text-slate-800">
+                  {userRole === 'admin' ? '📋 Todas as Cotações' : '📦 Minhas Cotações'}
+                </h2>
+                <p className="text-slate-500 mt-2">
+                  {userRole === 'admin' 
+                    ? 'Analise as propostas de frete enviadas pelos motoristas.' 
+                    : 'Acompanhe o status das suas propostas de frete.'}
+                </p>
+              </div>
+
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-slate-400 text-xs uppercase tracking-wider bg-slate-50">
+                        <th className="px-6 py-4 font-semibold">Motorista</th>
+                        <th className="px-6 py-4 font-semibold">Veículo</th>
+                        <th className="px-6 py-4 font-semibold">Preço</th>
+                        <th className="px-6 py-4 font-semibold">Rota</th>
+                        <th className="px-6 py-4 font-semibold">Status</th>
+                        {userRole === 'admin' && <th className="px-6 py-4 font-semibold">Ações</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {quotes.map((quote) => (
+                        <tr key={quote.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-bold text-slate-800">{quote.driverName}</p>
+                            <p className="text-xs text-slate-400">{quote.id}</p>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600">{quote.vehiclePlate}</td>
+                          <td className="px-6 py-4 font-bold text-[#2ECC71]">
+                            R$ {quote.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-xs text-slate-500">De: {quote.pickupLocation}</p>
+                            <p className="text-xs text-slate-500">Para: {quote.deliveryLocation}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
+                              quote.status === 'Pendente' ? "bg-amber-50 text-amber-600" :
+                              quote.status === 'Aprovado' ? "bg-green-50 text-green-600" :
+                              "bg-red-50 text-red-600"
+                            )}>
+                              {quote.status}
+                            </span>
+                          </td>
+                          {userRole === 'admin' && (
+                            <td className="px-6 py-4">
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => {
+                                    setQuotes(quotes.map(q => q.id === quote.id ? { ...q, status: 'Aprovado' } : q));
+                                    showNotification('success', 'Cotação aprovada!');
+                                  }}
+                                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                                  title="Aprovar"
+                                >
+                                  <CheckCircle2 size={18} />
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    setQuotes(quotes.map(q => q.id === quote.id ? { ...q, status: 'Recusado' } : q));
+                                    showNotification('info', 'Cotação recusada.');
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                  title="Recusar"
+                                >
+                                  <X size={18} />
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
+        </div>
       </main>
 
       {/* Notifications */}
       <AnimatePresence>
+        {/* History Modal */}
+        {viewHistoryId && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-slate-800">Histórico da Solicitação {viewHistoryId}</h3>
+                <button onClick={() => setViewHistoryId(null)} className="text-slate-400 hover:text-red-500">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-8 max-h-[60vh] overflow-y-auto">
+                <RequestHistory history={requests.find(r => r.id === viewHistoryId)?.history || []} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {notification && (
           <motion.div
             initial={{ opacity: 0, y: 50, x: '-50%' }}
