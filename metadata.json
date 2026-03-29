@@ -1,0 +1,7 @@
+{
+  "name": "RetiraAqui - Logística Reversa Fácil",
+  "description": "Plataforma de logística reversa para solicitações de devolução, monitoramento de SLA e registro de coletas.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
