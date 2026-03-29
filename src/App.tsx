@@ -17,6 +17,8 @@ import {
   Search,
   LogIn,
   LogOut,
+  RefreshCcw,
+  Cloud,
   Map as MapIcon,
   List as ListIcon
 } from 'lucide-react';
