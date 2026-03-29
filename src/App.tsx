@@ -274,7 +274,9 @@ export default function App() {
   const handleLogout = () => {
     setUserRole(null);
     setActiveMenu('cliente');
-    showNotification('info', 'Você saiu do sistema.');
+    setCapturedImage(null);
+    stopCamera();
+    showNotification('info', 'Você saiu do sistema. Voltando para a tela inicial...');
   };
 
   const handleLogin = (role: Role) => {
@@ -378,6 +380,14 @@ export default function App() {
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+          <SidebarItem 
+            icon={LogIn} 
+            label={isSidebarOpen ? "Trocar Perfil" : ""} 
+            active={false} 
+            onClick={handleLogout} 
+          />
+          <div className="h-px bg-slate-100 my-4 mx-2" />
+          
           {userRole === 'cliente' && (
             <SidebarItem 
               icon={Package} 
@@ -408,16 +418,17 @@ export default function App() {
           <button 
             onClick={handleLogout}
             className={cn(
-              "w-full flex items-center gap-3 p-2 hover:bg-red-50 rounded-lg text-red-500 transition-colors",
+              "w-full flex items-center gap-3 p-3 hover:bg-red-50 rounded-xl text-red-500 transition-all duration-200 group",
               !isSidebarOpen && "justify-center"
             )}
+            title="Sair e voltar ao início"
           >
-            <LogOut size={20} />
-            {isSidebarOpen && <span className="font-medium">Sair</span>}
+            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+            {isSidebarOpen && <span className="font-bold">Sair do Sistema</span>}
           </button>
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="w-full flex justify-center p-2 hover:bg-slate-100 rounded-lg text-slate-400"
+            className="w-full flex justify-center p-2 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors"
           >
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
