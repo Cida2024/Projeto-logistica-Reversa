@@ -23,9 +23,13 @@ import {
   List as ListIcon,
   MessageSquare,
   MapPin,
-  DollarSign
+  DollarSign,
+  Download,
+  FileUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { 
   BarChart, 
   Bar, 
@@ -48,6 +52,7 @@ type RequestStatus =
   | 'Contraproposta Enviada'
   | 'Aguardando Coleta' 
   | 'Em Rota' 
+  | 'No Local'
   | 'Coletado' 
   | 'Em Trânsito'
   | 'Em Processamento' 
@@ -72,6 +77,14 @@ interface Request {
   destination?: string;
   price?: number;
   deadline?: string;
+  invoiceUrl?: string;
+  driverName?: string;
+  vehiclePlate?: string;
+  productCode?: string;
+  collectionPhoto?: string;
+  arrivalTimestamp?: string;
+  collectionStartTimestamp?: string;
+  collectionEndTimestamp?: string;
   counterOffer?: {
     price: number;
     deadline: string;
@@ -258,29 +271,35 @@ const StatusTimelineItem = ({
   </div>
 );
 
-const RequestHistory = ({ history }: { history: HistoryEntry[] }) => (
+const RequestHistory = ({ history, isClient }: { history: HistoryEntry[], isClient?: boolean }) => (
   <div className="space-y-4">
-    {history.map((entry, idx) => (
-      <div key={idx} className="flex gap-4 relative">
-        {idx !== history.length - 1 && (
-          <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-slate-100" />
-        )}
-        <div className={cn(
-          "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 z-10",
-          idx === history.length - 1 ? "bg-blue-500 border-blue-500" : "bg-white border-slate-200"
-        )}>
+    {history.map((entry, idx) => {
+      const displayStatus = isClient && entry.status === 'Pendente de Precificação' 
+        ? 'Solicitação de retirada recebida' 
+        : entry.status;
+        
+      return (
+        <div key={idx} className="flex gap-4 relative">
+          {idx !== history.length - 1 && (
+            <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-slate-100" />
+          )}
           <div className={cn(
-            "w-2 h-2 rounded-full",
-            idx === history.length - 1 ? "bg-white" : "bg-slate-300"
-          )} />
+            "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 z-10",
+            idx === history.length - 1 ? "bg-blue-500 border-blue-500" : "bg-white border-slate-200"
+          )}>
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              idx === history.length - 1 ? "bg-white" : "bg-slate-300"
+            )} />
+          </div>
+          <div className="pb-6">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{entry.timestamp}</p>
+            <p className="font-bold text-slate-800">{displayStatus}</p>
+            {entry.note && <p className="text-sm text-slate-500 mt-1">{entry.note}</p>}
+          </div>
         </div>
-        <div className="pb-6">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{entry.timestamp}</p>
-          <p className="font-bold text-slate-800">{entry.status}</p>
-          {entry.note && <p className="text-sm text-slate-500 mt-1">{entry.note}</p>}
-        </div>
-      </div>
-    ))}
+      );
+    })}
   </div>
 );
 
@@ -297,7 +316,7 @@ export default function App() {
   const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
   const [dashboardSortBy, setDashboardSortBy] = useState<'id' | 'status' | 'sla'>('id');
   const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'map'>('list');
-  const [parceiroTab, setParceiroTab] = useState<'coletas' | 'fretes'>('coletas');
+  const [parceiroTab, setParceiroTab] = useState<'coletas' | 'fretes' | 'historico'>('coletas');
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>(INITIAL_QUOTES);
@@ -306,12 +325,16 @@ export default function App() {
   const [reviewingCounterOfferId, setReviewingCounterOfferId] = useState<string | null>(null);
   const [counterOfferingId, setCounterOfferingId] = useState<string | null>(null);
   const [viewHistoryId, setViewHistoryId] = useState<string | null>(null);
+  const [viewCollectionDetailsId, setViewCollectionDetailsId] = useState<string | null>(null);
+  const [uploadingRequestId, setUploadingRequestId] = useState<string | null>(null);
+  const [isStartingCollection, setIsStartingCollection] = useState(false);
   const [counterOfferDay, setCounterOfferDay] = useState<'hoje' | 'amanha' | 'outro'>('hoje');
   const [counterOfferDate, setCounterOfferDate] = useState<string>('');
   const [counterOfferTime, setCounterOfferTime] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInvoiceRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => stopCamera();
@@ -398,12 +421,58 @@ export default function App() {
   const handleAcceptOrder = (id: string, collectorName: string = 'João Silva') => {
     setRequests(requests.map(r => r.id === id ? { 
       ...r, 
-      status: 'Em Rota', 
+      status: 'Aguardando Coleta', 
       collectorName,
-      history: [...r.history, { status: 'Em Rota', timestamp: new Date().toLocaleString('pt-BR'), note: `Aceito por ${collectorName}` }]
+      history: [...r.history, { status: 'Aguardando Coleta', timestamp: new Date().toLocaleString('pt-BR'), note: `Aceito por ${collectorName}` }]
     } : r));
     setSelectedRequestId(id);
     showNotification('info', `Você assumiu a coleta ${id}!`);
+  };
+
+  const handleStartTrip = (id: string) => {
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'Em Rota', 
+      history: [...r.history, { status: 'Em Rota', timestamp: new Date().toLocaleString('pt-BR'), note: 'Parceiro iniciou o deslocamento' }]
+    } : r));
+    showNotification('info', 'Viagem iniciada!');
+  };
+
+  const handleArrival = (id: string) => {
+    const now = new Date().toLocaleString('pt-BR');
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'No Local', 
+      arrivalTimestamp: now,
+      history: [...r.history, { status: 'No Local', timestamp: now, note: 'Parceiro chegou no local de coleta' }]
+    } : r));
+    showNotification('success', 'Chegada registrada!');
+  };
+
+  const handleStartCollection = (id: string) => {
+    const now = new Date().toLocaleString('pt-BR');
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      collectionStartTimestamp: now,
+      history: [...r.history, { status: r.status, timestamp: now, note: 'Iniciou o processo de coleta (conferência)' }]
+    } : r));
+    setIsStartingCollection(true);
+  };
+
+  const handleFinalizeCollection = (id: string, data: { driverName: string, vehiclePlate: string, productCode: string, photo: string }) => {
+    const now = new Date().toLocaleString('pt-BR');
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'Coletado',
+      driverName: data.driverName,
+      vehiclePlate: data.vehiclePlate,
+      productCode: data.productCode,
+      collectionPhoto: data.photo,
+      collectionEndTimestamp: now,
+      history: [...r.history, { status: 'Coletado', timestamp: now, note: `Coleta finalizada por ${data.driverName} (${data.vehiclePlate})` }]
+    } : r));
+    setSelectedRequestId(null);
+    showNotification('success', 'Coleta finalizada com sucesso!');
   };
 
   const handleQuoteSubmit = (quote: Omit<Quote, 'id' | 'status' | 'createdAt'>) => {
@@ -438,6 +507,45 @@ export default function App() {
       history: [...r.history, { status: 'Disponível para Parceiros', timestamp: new Date().toLocaleString('pt-BR'), note: `Precificado em R$ ${price.toFixed(2)}` }]
     } : r));
     showNotification('success', 'Solicitação precificada e liberada para parceiros!');
+  };
+
+  const generatePartnerReport = () => {
+    const doc = new jsPDF();
+    const partnerRequests = requests.filter(r => 
+      r.collectorName && 
+      ['Coletado', 'Em Trânsito', 'Em Processamento', 'Finalizado (Financeiro)'].includes(r.status)
+    );
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(41, 128, 185); // #2980B9
+    doc.text('Relatório de Viagens Realizadas', 14, 22);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 30);
+    doc.text(`Parceiro Logístico`, 14, 35);
+
+    // Table
+    const tableData = partnerRequests.map(r => [
+      r.id,
+      r.history[0]?.timestamp.split(',')[0] || '-', // Date
+      r.destination || 'Não informado',
+      r.status,
+      `R$ ${r.price?.toFixed(2) || '0,00'}`
+    ]);
+
+    autoTable(doc, {
+      startY: 45,
+      head: [['ID', 'Data', 'Destino', 'Status', 'Valor']],
+      body: tableData,
+      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { top: 45 },
+    });
+
+    doc.save(`relatorio-viagens-${new Date().toISOString().split('T')[0]}.pdf`);
+    showNotification('success', 'Relatório PDF gerado com sucesso!');
   };
 
   const handleCounterOfferDecision = (id: string, decision: 'Aprovar' | 'Reprovar') => {
@@ -496,6 +604,53 @@ export default function App() {
       showNotification('success', 'Tratativas concluídas. O financeiro entrará em contato.');
       setSelectedRequestId(null);
     }, 6000);
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Cliente', 'Coletor', 'Status', 'SLA', 'Prioridade', 'Origem', 'Destino', 'Preço', 'Prazo'];
+    const csvRows = [
+      headers.join(';'),
+      ...requests.map(r => [
+        r.id,
+        r.clientName || '',
+        r.collectorName || '',
+        r.status,
+        r.sla,
+        r.priority,
+        r.origin || '',
+        r.destination || '',
+        r.price || '',
+        r.deadline || ''
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))
+    ];
+    
+    const csvContent = "\uFEFF" + csvRows.join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `relatorio_logistica_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showNotification('success', 'Relatório exportado com sucesso!');
+  };
+
+  const handleInvoiceUpload = (id: string, file: File) => {
+    // Simulate upload
+    const fakeUrl = URL.createObjectURL(file);
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      invoiceUrl: fakeUrl,
+      history: [...r.history, { 
+        status: r.status, 
+        timestamp: new Date().toLocaleString('pt-BR'), 
+        note: `Nota Fiscal anexada: ${file.name}` 
+      }]
+    } : r));
+    showNotification('success', `Nota Fiscal anexada à solicitação ${id}!`);
   };
 
   const selectedRequest = requests.find(r => r.id === selectedRequestId);
@@ -796,13 +951,6 @@ export default function App() {
                                 Fazer o upload direto do Google Drive
                               </button>
                             </div>
-                            <input 
-                              type="file" 
-                              ref={fileInputRef} 
-                              onChange={handleFileUpload} 
-                              accept="image/*" 
-                              className="hidden" 
-                            />
                           </div>
                         )}
                         <canvas ref={canvasRef} className="hidden" />
@@ -856,8 +1004,10 @@ export default function App() {
                       if (!req) return null;
 
                       const stages = [
+                        { status: 'Pendente de Precificação', label: 'Solicitação de retirada recebida', desc: 'Sua solicitação foi recebida e está sendo analisada.' },
                         { status: 'Aguardando Coleta', label: 'Solicitação Registrada', desc: 'Sua solicitação foi recebida e está aguardando um coletor.' },
                         { status: 'Em Rota', label: 'Motorista a Caminho', desc: 'Um motorista aceitou sua coleta e está se deslocando.' },
+                        { status: 'No Local', label: 'Motorista no Local', desc: 'O motorista chegou ao local e está iniciando a coleta.' },
                         { status: 'Coletado', label: 'Pedido Retirado', desc: 'O item foi coletado com sucesso pelo motorista.' },
                         { status: 'Em Processamento', label: 'Tratativas da Retirada', desc: 'O item está sendo processado em nosso centro logístico.' },
                         { status: 'Finalizado (Financeiro)', label: 'Financeiro em Contato', desc: 'Processo concluído. Nosso time financeiro entrará em contato para o reembolso/troca.' }
@@ -881,7 +1031,7 @@ export default function App() {
                           
                           <div className="pt-8 border-t border-slate-100">
                             <h4 className="text-lg font-bold text-slate-800 mb-6">Histórico Detalhado</h4>
-                            <RequestHistory history={req.history} />
+                            <RequestHistory history={req.history} isClient />
                           </div>
                         </div>
                       );
@@ -1064,15 +1214,24 @@ export default function App() {
                   <div className="flex flex-col gap-6 mb-6">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <h3 className="text-lg font-bold text-slate-800">Solicitações Recentes</h3>
-                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 w-full sm:w-auto">
-                        <Search size={16} className="text-slate-400" />
-                        <input 
-                          type="text"
-                          placeholder="Buscar por ID ou Cliente..."
-                          value={dashboardSearchQuery}
-                          onChange={(e) => setDashboardSearchQuery(e.target.value)}
-                          className="bg-transparent border-none outline-none text-sm w-full sm:w-48"
-                        />
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex-1 sm:flex-initial">
+                          <Search size={16} className="text-slate-400" />
+                          <input 
+                            type="text"
+                            placeholder="Buscar por ID ou Cliente..."
+                            value={dashboardSearchQuery}
+                            onChange={(e) => setDashboardSearchQuery(e.target.value)}
+                            className="bg-transparent border-none outline-none text-sm w-full sm:w-48"
+                          />
+                        </div>
+                        <button 
+                          onClick={handleExportCSV}
+                          className="flex items-center gap-2 bg-[#2ECC71] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#27ae60] transition-colors"
+                        >
+                          <Download size={14} />
+                          Exportar CSV
+                        </button>
                       </div>
                     </div>
                     
@@ -1172,12 +1331,43 @@ export default function App() {
                               </div>
                             </td>
                             <td className="py-4">
-                              <button 
-                                onClick={() => setViewHistoryId(req.id)}
-                                className="text-xs font-bold text-[#2980B9] hover:underline"
-                              >
-                                Ver Histórico
-                              </button>
+                              <div className="flex flex-col gap-2">
+                                <button 
+                                  onClick={() => setViewHistoryId(req.id)}
+                                  className="text-xs font-bold text-[#2980B9] hover:underline text-left"
+                                >
+                                  Ver Histórico
+                                </button>
+                                {(req.status === 'Coletado' || req.status === 'Em Trânsito' || req.status === 'Em Processamento' || req.status === 'Finalizado (Financeiro)') && (
+                                  <button 
+                                    onClick={() => setViewCollectionDetailsId(req.id)}
+                                    className="text-xs font-bold text-purple-600 hover:underline text-left flex items-center gap-1"
+                                  >
+                                    <Package size={12} />
+                                    Detalhes da Coleta
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => {
+                                    setUploadingRequestId(req.id);
+                                    fileInvoiceRef.current?.click();
+                                  }}
+                                  className="text-xs font-bold text-[#2ECC71] hover:underline flex items-center gap-1"
+                                >
+                                  <FileUp size={12} />
+                                  {req.invoiceUrl ? 'Ver/Trocar Nota' : 'Subir Nota'}
+                                </button>
+                                {req.invoiceUrl && (
+                                  <a 
+                                    href={req.invoiceUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                                  >
+                                    Abrir Nota Atual
+                                  </a>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1220,6 +1410,15 @@ export default function App() {
                     )}
                   >
                     Fretes (Cotação)
+                  </button>
+                  <button 
+                    onClick={() => setParceiroTab('historico')}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                      parceiroTab === 'historico' ? "bg-white text-purple-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Histórico
                   </button>
                 </div>
               </div>
@@ -1387,44 +1586,199 @@ export default function App() {
                       </div>
 
                       <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-blue-100 p-3 rounded-full">
-                            <Truck className="text-[#2980B9]" size={24} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">Status da Coleta</p>
-                            <p className="text-xs text-slate-500">Atualize o andamento do pedido</p>
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 mt-6">
-                          <button 
-                            onClick={() => setRequests(prev => prev.map(r => r.id === selectedRequestId ? { 
-                              ...r, 
-                              status: 'Em Rota',
-                              history: [...r.history, { status: 'Em Rota', timestamp: new Date().toLocaleString('pt-BR'), note: 'Parceiro chegou no local' }]
-                            } : r))}
-                            className={cn(
-                              "py-3 rounded-xl font-bold text-sm transition-all",
-                              requests.find(r => r.id === selectedRequestId)?.status === 'Em Rota' 
-                                ? "bg-blue-600 text-white shadow-lg shadow-blue-200" 
-                                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                            )}
-                          >
-                            Cheguei no Local
-                          </button>
-                          <button 
-                            onClick={handleFinalizeOrder}
-                            className="bg-[#2ECC71] text-white py-3 rounded-xl font-bold text-sm hover:bg-[#27ae60] transition-all"
-                          >
-                            Finalizar Coleta
-                          </button>
-                        </div>
+                        {(() => {
+                          const req = requests.find(r => r.id === selectedRequestId);
+                          if (!req) return null;
+
+                          if (isStartingCollection) {
+                            return (
+                              <form 
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  const formData = new FormData(e.currentTarget);
+                                  handleFinalizeCollection(req.id, {
+                                    driverName: formData.get('driverName') as string,
+                                    vehiclePlate: formData.get('vehiclePlate') as string,
+                                    productCode: formData.get('productCode') as string,
+                                    photo: capturedImage || ''
+                                  });
+                                  setIsStartingCollection(false);
+                                  setCapturedImage(null);
+                                }}
+                                className="space-y-6"
+                              >
+                                <div className="flex items-center gap-4 mb-4">
+                                  <div className="bg-green-100 p-3 rounded-full">
+                                    <Package className="text-[#2ECC71]" size={24} />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-800">Iniciando Coleta</p>
+                                    <p className="text-xs text-slate-500">Registre os dados do produto e motorista</p>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Foto do Produto</label>
+                                    <div className="relative border-2 border-dashed border-slate-200 rounded-2xl overflow-hidden bg-white min-h-[180px] flex flex-col items-center justify-center">
+                                      {capturedImage ? (
+                                        <div className="relative w-full h-full">
+                                          <img src={capturedImage} alt="Produto" className="w-full h-48 object-cover" />
+                                          <button 
+                                            type="button"
+                                            onClick={() => {
+                                              setCapturedImage(null);
+                                              startCamera();
+                                            }}
+                                            className="absolute top-2 right-2 bg-white/80 backdrop-blur p-1.5 rounded-full shadow-lg hover:bg-white transition-colors"
+                                          >
+                                            <RefreshCcw size={16} className="text-slate-600" />
+                                          </button>
+                                        </div>
+                                      ) : isCameraActive ? (
+                                        <div className="relative w-full h-48 bg-black">
+                                          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                          <button 
+                                            type="button"
+                                            onClick={capturePhoto}
+                                            className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-[#2ECC71] text-white p-3 rounded-full shadow-xl hover:scale-105 transition-transform"
+                                          >
+                                            <Camera size={20} />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-col md:flex-row gap-4">
+                                          <button 
+                                            type="button"
+                                            onClick={startCamera}
+                                            className="flex flex-col items-center gap-2 text-slate-400 hover:text-slate-600 transition-colors p-4 border border-dashed border-slate-200 rounded-xl hover:bg-slate-50"
+                                          >
+                                            <Camera size={32} />
+                                            <span className="text-xs font-bold">Tirar Foto</span>
+                                          </button>
+                                          <button 
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="flex flex-col items-center gap-2 text-slate-400 hover:text-slate-600 transition-colors p-4 border border-dashed border-slate-200 rounded-xl hover:bg-slate-50"
+                                          >
+                                            <FileUp size={32} />
+                                            <span className="text-xs font-bold">Subir Documento</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                      <canvas ref={canvasRef} className="hidden" />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                      <label className="text-xs font-bold text-slate-500 uppercase">Nome do Motorista</label>
+                                      <input name="driverName" type="text" required placeholder="Nome completo" className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-xs font-bold text-slate-500 uppercase">Placa do Veículo</label>
+                                      <input name="vehiclePlate" type="text" required placeholder="ABC-1234" className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Código do Produto</label>
+                                    <input name="productCode" type="text" required placeholder="Ex: SKU-999" className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-4">
+                                  <button 
+                                    type="button"
+                                    onClick={() => {
+                                      setIsStartingCollection(false);
+                                      stopCamera();
+                                    }}
+                                    className="flex-1 bg-white border border-slate-200 text-slate-600 py-3 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all"
+                                  >
+                                    Voltar
+                                  </button>
+                                  <button 
+                                    type="submit"
+                                    className="flex-1 bg-[#2ECC71] text-white py-3 rounded-xl font-bold text-sm hover:bg-[#27ae60] transition-all shadow-lg shadow-green-100"
+                                  >
+                                    Confirmar Coleta
+                                  </button>
+                                </div>
+                              </form>
+                            );
+                          }
+
+                          return (
+                            <>
+                              <div className="flex items-center gap-4">
+                                <div className="bg-blue-100 p-3 rounded-full">
+                                  <Truck className="text-[#2980B9]" size={24} />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-slate-800">Status da Coleta</p>
+                                  <p className="text-xs text-slate-500">
+                                    {req.status === 'Aguardando Coleta' ? 'Inicie sua viagem até o local' :
+                                     req.status === 'Em Rota' ? 'Confirme sua chegada ao local' :
+                                     req.status === 'No Local' ? 'Inicie o processo de coleta' :
+                                     'Coleta finalizada'}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              <div className="mt-6">
+                                {req.status === 'Aguardando Coleta' && (
+                                  <button 
+                                    onClick={() => handleStartTrip(req.id)}
+                                    className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                                  >
+                                    <Truck size={18} />
+                                    Iniciar Viagem
+                                  </button>
+                                )}
+
+                                {req.status === 'Em Rota' && (
+                                  <button 
+                                    onClick={() => handleArrival(req.id)}
+                                    className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold text-sm shadow-lg shadow-orange-200 hover:bg-orange-600 transition-all flex items-center justify-center gap-2"
+                                  >
+                                    <MapPin size={18} />
+                                    Cheguei no Local
+                                  </button>
+                                )}
+
+                                {req.status === 'No Local' && (
+                                  <div className="space-y-4">
+                                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                      <p className="text-xs font-bold text-blue-600 uppercase mb-1">Chegada Registrada</p>
+                                      <p className="text-sm text-slate-700 font-medium">{req.arrivalTimestamp}</p>
+                                    </div>
+                                    <button 
+                                      onClick={() => handleStartCollection(req.id)}
+                                      className="w-full bg-[#2ECC71] text-white py-4 rounded-xl font-bold text-sm shadow-lg shadow-green-200 hover:bg-[#27ae60] transition-all flex items-center justify-center gap-2"
+                                    >
+                                      <Package size={18} />
+                                      Iniciar Coleta
+                                    </button>
+                                  </div>
+                                )}
+
+                                {req.status === 'Coletado' && (
+                                  <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
+                                    <CheckCircle2 className="text-[#2ECC71] mx-auto mb-2" size={32} />
+                                    <p className="font-bold text-green-800">Coleta Realizada</p>
+                                    <p className="text-xs text-green-600 mt-1">Aguardando processamento logístico</p>
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : parceiroTab === 'fretes' ? (
                 /* Unified Motorista/Fretes View */
                 <div className="space-y-6">
                   {quotingRequestId ? (
@@ -1493,6 +1847,61 @@ export default function App() {
                       </div>
                     </div>
                   )}
+                </div>
+              ) : (
+                /* Histórico de Viagens */
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-slate-700">Histórico de Viagens</h3>
+                    <button 
+                      onClick={generatePartnerReport}
+                      className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-700 transition-all flex items-center gap-2 shadow-lg shadow-purple-100"
+                    >
+                      <Download size={16} />
+                      Exportar PDF
+                    </button>
+                  </div>
+
+                  <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                          <th className="px-8 py-4 font-bold">ID</th>
+                          <th className="px-8 py-4 font-bold">Data</th>
+                          <th className="px-8 py-4 font-bold">Destino</th>
+                          <th className="px-8 py-4 font-bold">Status</th>
+                          <th className="px-8 py-4 font-bold">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {requests
+                          .filter(r => r.collectorName && ['Coletado', 'Em Trânsito', 'Em Processamento', 'Finalizado (Financeiro)'].includes(r.status))
+                          .map(req => (
+                            <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-8 py-4 font-bold text-slate-700">{req.id}</td>
+                              <td className="px-8 py-4 text-sm text-slate-600">{req.history[0]?.timestamp.split(',')[0]}</td>
+                              <td className="px-8 py-4 text-sm text-slate-600">{req.destination || 'Não informado'}</td>
+                              <td className="px-8 py-4">
+                                <span className={cn(
+                                  "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
+                                  req.status === 'Finalizado (Financeiro)' ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-600"
+                                )}>
+                                  {req.status}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4 font-bold text-slate-800">R$ {req.price?.toFixed(2) || '0,00'}</td>
+                            </tr>
+                          ))}
+                        {requests.filter(r => r.collectorName && ['Coletado', 'Em Trânsito', 'Em Processamento', 'Finalizado (Financeiro)'].includes(r.status)).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                              Nenhuma viagem finalizada encontrada no histórico.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </motion.div>
@@ -1596,6 +2005,86 @@ export default function App() {
       {/* Notifications */}
       <AnimatePresence>
         {/* History Modal */}
+        {/* Collection Details Modal */}
+        {viewCollectionDetailsId && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-slate-800">Detalhes da Coleta {viewCollectionDetailsId}</h3>
+                <button onClick={() => setViewCollectionDetailsId(null)} className="text-slate-400 hover:text-red-500">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-8 max-h-[80vh] overflow-y-auto space-y-6">
+                {(() => {
+                  const req = requests.find(r => r.id === viewCollectionDetailsId);
+                  if (!req) return null;
+                  return (
+                    <>
+                      {req.collectionPhoto && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Foto do Produto</p>
+                          <div className="rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
+                            <img 
+                              src={req.collectionPhoto} 
+                              alt="Produto Coletado" 
+                              className="w-full h-auto object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Motorista</p>
+                          <p className="text-sm font-bold text-slate-800">{req.driverName || '-'}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Placa do Veículo</p>
+                          <p className="text-sm font-bold text-slate-800">{req.vehiclePlate || '-'}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-2xl col-span-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Código do Produto</p>
+                          <p className="text-sm font-bold text-slate-800">{req.productCode || '-'}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 pt-4 border-t border-slate-100">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Clock size={14} className="text-slate-400" />
+                            <span className="text-xs font-medium text-slate-500">Chegada no Local</span>
+                          </div>
+                          <span className="text-xs font-bold text-slate-700">{req.arrivalTimestamp || '-'}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Clock size={14} className="text-slate-400" />
+                            <span className="text-xs font-medium text-slate-500">Início da Coleta</span>
+                          </div>
+                          <span className="text-xs font-bold text-slate-700">{req.collectionStartTimestamp || '-'}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Clock size={14} className="text-slate-400" />
+                            <span className="text-xs font-medium text-slate-500">Finalização</span>
+                          </div>
+                          <span className="text-xs font-bold text-slate-700">{req.collectionEndTimestamp || '-'}</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {viewHistoryId && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
             <motion.div 
@@ -1630,6 +2119,27 @@ export default function App() {
             <p className="font-medium">{notification.message}</p>
           </motion.div>
         )}
+        {/* Global Hidden Inputs */}
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileUpload} 
+          accept="image/*" 
+          className="hidden" 
+        />
+        <input 
+          type="file" 
+          ref={fileInvoiceRef} 
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file && uploadingRequestId) {
+              handleInvoiceUpload(uploadingRequestId, file);
+              setUploadingRequestId(null);
+            }
+          }} 
+          className="hidden" 
+          accept=".pdf,.jpg,.png"
+        />
       </AnimatePresence>
     </div>
   );
