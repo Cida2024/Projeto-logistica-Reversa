@@ -684,83 +684,134 @@ export default function App() {
 
   if (!userRole) {
     return (
-      <div className="min-h-screen bg-[#f0f4f8] flex items-center justify-center p-6 font-sans">
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 md:p-6 font-sans overflow-hidden relative">
+        {/* Background decorative elements */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-blue-100/50 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-[-10%] left-[-5%] w-[30vw] h-[30vw] bg-green-100/50 rounded-full blur-3xl" />
+        </div>
+
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 bg-white rounded-[40px] shadow-2xl overflow-hidden border border-white"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-5xl w-full grid grid-cols-1 md:grid-cols-2 bg-white rounded-[48px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] overflow-hidden border border-white relative z-10"
         >
-          <div className="bg-[#2980B9] p-12 text-white flex flex-col justify-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-              <div className="absolute top-[-10%] left-[-10%] w-64 h-64 bg-white rounded-full blur-3xl" />
-              <div className="absolute bottom-[-10%] right-[-10%] w-64 h-64 bg-[#2ECC71] rounded-full blur-3xl" />
+          <div className="bg-[#2980B9] p-8 md:p-16 text-white flex flex-col justify-between relative overflow-hidden">
+            {/* Animated background pattern */}
+            <div className="absolute inset-0 opacity-20 pointer-events-none">
+              <div className="absolute top-0 left-0 w-full h-full" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
             </div>
+            
             <div className="relative z-10">
-              <div className="flex flex-col items-center mb-12">
-                <div className="bg-white/20 p-6 rounded-[40px] backdrop-blur-md mb-8 shadow-2xl border border-white/30 transform -rotate-6 hover:rotate-0 transition-transform duration-500">
-                  <Infinity className="text-white" size={80} />
+              <motion.div 
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="flex items-center gap-3 mb-12"
+              >
+                <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md border border-white/30">
+                  <Infinity className="text-white" size={32} />
                 </div>
-                <h1 className="text-5xl font-black mb-2 tracking-tighter text-white">CicloLog</h1>
-                <div className="flex items-center gap-2">
-                  <div className="h-px w-8 bg-blue-200/50" />
-                  <p className="text-blue-100/90 text-[11px] font-bold uppercase tracking-[0.4em]">Soluções Integradas</p>
-                  <div className="h-px w-8 bg-blue-200/50" />
+                <div>
+                  <h1 className="text-2xl font-black tracking-tighter text-white">CicloLog</h1>
+                  <p className="text-[9px] text-blue-100/70 font-bold uppercase tracking-[0.3em]">Logística Inteligente</p>
                 </div>
+              </motion.div>
+
+              <div className="space-y-6">
+                <h2 className="text-4xl md:text-6xl font-black leading-[0.9] tracking-tighter">
+                  O CICLO <br />
+                  <span className="text-[#2ECC71]">PERFEITO</span> <br />
+                  DA LOGÍSTICA
+                </h2>
+                <p className="text-blue-50/80 text-lg max-w-xs font-medium leading-relaxed">
+                  Conectando empresas, parceiros e clientes em uma jornada de eficiência sem fim.
+                </p>
               </div>
-              <p className="text-blue-50/90 text-lg leading-relaxed text-center font-medium">
-                Conectando o ciclo logístico com inteligência e eficiência.
-              </p>
+            </div>
+
+            <div className="relative z-10 pt-12">
+              <div className="flex items-center gap-4">
+                <div className="flex -space-x-3">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="w-10 h-10 rounded-full border-2 border-[#2980B9] bg-blue-400 flex items-center justify-center text-[10px] font-bold">
+                      <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs font-semibold text-blue-100">
+                  +2.500 operações <br /> realizadas este mês
+                </p>
+              </div>
             </div>
           </div>
           
-          <div className="p-12 flex flex-col justify-center bg-white">
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Seja bem-vindo!</h2>
-            <p className="text-slate-500 mb-8">Escolha seu perfil para acessar a plataforma:</p>
-            
-            <div className="space-y-4">
-              <button 
-                onClick={() => handleLogin('cliente')}
-                className="w-full group flex items-center gap-4 p-5 rounded-2xl border-2 border-slate-100 hover:border-[#2ECC71] hover:bg-green-50 transition-all text-left"
-              >
-                <div className="bg-slate-100 group-hover:bg-[#2ECC71] p-3 rounded-xl transition-colors">
-                  <Package className="text-slate-500 group-hover:text-white" size={24} />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">Sou Cliente</p>
-                  <p className="text-xs text-slate-500">Quero devolver um produto</p>
-                </div>
-              </button>
-
-              <button 
-                onClick={() => handleLogin('parceiro')}
-                className="w-full group flex items-center gap-4 p-5 rounded-2xl border-2 border-slate-100 hover:border-[#2980B9] hover:bg-blue-50 transition-all text-left"
-              >
-                <div className="bg-slate-100 group-hover:bg-[#2980B9] p-3 rounded-xl transition-colors">
-                  <Truck className="text-slate-500 group-hover:text-white" size={24} />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">Sou Parceiro Logístico</p>
-                  <p className="text-xs text-slate-500">Quero realizar coletas ou fretes</p>
-                </div>
-              </button>
-
-              <button 
-                onClick={() => handleLogin('admin')}
-                className="w-full group flex items-center gap-4 p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-800 hover:bg-slate-50 transition-all text-left"
-              >
-                <div className="bg-slate-100 group-hover:bg-slate-800 p-3 rounded-xl transition-colors">
-                  <LayoutDashboard className="text-slate-500 group-hover:text-white" size={24} />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">Administrador</p>
-                  <p className="text-xs text-slate-500">Gestão e Dashboard Logístico</p>
-                </div>
-              </button>
+          <div className="p-8 md:p-16 flex flex-col justify-center bg-white">
+            <div className="mb-10">
+              <h3 className="text-3xl font-bold text-slate-900 tracking-tight">Bem-vindo de volta</h3>
+              <p className="text-slate-500 mt-2">Selecione seu perfil para acessar o painel personalizado.</p>
             </div>
             
-            <p className="mt-8 text-center text-xs text-slate-400">
-              MVP desenvolvido para demonstração técnica.
-            </p>
+            <div className="space-y-4">
+              <motion.button 
+                whileHover={{ x: 8 }}
+                onClick={() => handleLogin('cliente')}
+                className="w-full group flex items-center gap-5 p-6 rounded-[32px] border-2 border-slate-50 hover:border-[#2ECC71]/30 hover:bg-green-50/50 transition-all text-left"
+              >
+                <div className="bg-slate-100 group-hover:bg-[#2ECC71] p-4 rounded-2xl transition-colors shadow-sm">
+                  <Package className="text-slate-500 group-hover:text-white" size={28} />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-slate-900 text-lg">Sou Cliente</p>
+                  <p className="text-sm text-slate-500">Solicitar devolução ou troca</p>
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#2ECC71]">
+                  <CheckCircle2 size={24} />
+                </div>
+              </motion.button>
+
+              <motion.button 
+                whileHover={{ x: 8 }}
+                onClick={() => handleLogin('parceiro')}
+                className="w-full group flex items-center gap-5 p-6 rounded-[32px] border-2 border-slate-50 hover:border-[#2980B9]/30 hover:bg-blue-50/50 transition-all text-left"
+              >
+                <div className="bg-slate-100 group-hover:bg-[#2980B9] p-4 rounded-2xl transition-colors shadow-sm">
+                  <Truck className="text-slate-500 group-hover:text-white" size={28} />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-slate-900 text-lg">Sou Parceiro</p>
+                  <p className="text-sm text-slate-500">Gerenciar coletas e fretes</p>
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#2980B9]">
+                  <CheckCircle2 size={24} />
+                </div>
+              </motion.button>
+
+              <motion.button 
+                whileHover={{ x: 8 }}
+                onClick={() => handleLogin('admin')}
+                className="w-full group flex items-center gap-5 p-6 rounded-[32px] border-2 border-slate-50 hover:border-slate-900/10 hover:bg-slate-50 transition-all text-left"
+              >
+                <div className="bg-slate-100 group-hover:bg-slate-900 p-4 rounded-2xl transition-colors shadow-sm">
+                  <LayoutDashboard className="text-slate-500 group-hover:text-white" size={28} />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-slate-900 text-lg">Administrador</p>
+                  <p className="text-sm text-slate-500">Gestão estratégica e BI</p>
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-900">
+                  <CheckCircle2 size={24} />
+                </div>
+              </motion.button>
+            </div>
+            
+            <div className="mt-12 flex items-center justify-between">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Versão 2.0.4</p>
+              <div className="flex gap-4">
+                <div className="w-2 h-2 rounded-full bg-[#2ECC71] animate-pulse" />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sistemas Online</span>
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -806,9 +857,10 @@ export default function App() {
           {/* Mobile Close Button */}
           <button 
             onClick={() => setIsSidebarOpen(false)}
-            className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 md:hidden"
+            className="flex items-center gap-2 p-2 bg-red-50 hover:bg-red-100 rounded-xl text-red-500 md:hidden transition-all border border-red-100"
           >
-            <X size={20} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">feche aqui</span>
+            <X size={18} />
           </button>
         </div>
 
