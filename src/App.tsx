@@ -25,7 +25,9 @@ import {
   MapPin,
   DollarSign,
   Download,
-  FileUp
+  FileUp,
+  Infinity,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -401,7 +403,7 @@ export default function App() {
 
   const handleClientSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newId = `#${Math.floor(100 + Math.random() * 900)}`;
+    const newId = `#${Date.now().toString().slice(-3)}${Math.floor(Math.random() * 100)}`;
     const newRequest: Request = {
       id: newId,
       status: 'Pendente de Precificação',
@@ -478,7 +480,7 @@ export default function App() {
   const handleQuoteSubmit = (quote: Omit<Quote, 'id' | 'status' | 'createdAt'>) => {
     const newQuote: Quote = {
       ...quote,
-      id: `Q-${Math.floor(100 + Math.random() * 900)}`,
+      id: `Q-${Date.now().toString().slice(-3)}${Math.floor(Math.random() * 100)}`,
       status: 'Pendente',
       createdAt: new Date().toISOString()
     };
@@ -661,7 +663,15 @@ export default function App() {
     setActiveMenu('cliente');
     setCapturedImage(null);
     stopCamera();
+    setIsSidebarOpen(false);
     showNotification('info', 'Você saiu do sistema. Voltando para a tela inicial...');
+  };
+
+  const handleMenuClick = (menu: MenuType) => {
+    setActiveMenu(menu);
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleLogin = (role: Role) => {
@@ -686,12 +696,19 @@ export default function App() {
               <div className="absolute bottom-[-10%] right-[-10%] w-64 h-64 bg-[#2ECC71] rounded-full blur-3xl" />
             </div>
             <div className="relative z-10">
-              <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-md">
-                <Package size={32} className="text-white" />
+              <div className="flex flex-col items-center mb-12">
+                <div className="bg-white/20 p-6 rounded-[40px] backdrop-blur-md mb-8 shadow-2xl border border-white/30 transform -rotate-6 hover:rotate-0 transition-transform duration-500">
+                  <Infinity className="text-white" size={80} />
+                </div>
+                <h1 className="text-5xl font-black mb-2 tracking-tighter text-white">CicloLog</h1>
+                <div className="flex items-center gap-2">
+                  <div className="h-px w-8 bg-blue-200/50" />
+                  <p className="text-blue-100/90 text-[11px] font-bold uppercase tracking-[0.4em]">Soluções Integradas</p>
+                  <div className="h-px w-8 bg-blue-200/50" />
+                </div>
               </div>
-              <h1 className="text-4xl font-bold mb-4 tracking-tight">RetiraAqui</h1>
-              <p className="text-blue-100 text-lg leading-relaxed">
-                A solução inteligente para logística reversa. Simples para quem devolve, eficiente para quem coleta.
+              <p className="text-blue-50/90 text-lg leading-relaxed text-center font-medium">
+                Conectando o ciclo logístico com inteligência e eficiência.
               </p>
             </div>
           </div>
@@ -756,6 +773,7 @@ export default function App() {
       <AnimatePresence>
         {isSidebarOpen && (
           <motion.div 
+            key="sidebar-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -773,11 +791,25 @@ export default function App() {
           ? "w-72 translate-x-0" 
           : "w-72 -translate-x-full md:w-20 md:translate-x-0"
       )}>
-        <div className="p-6 flex items-center gap-3 border-b border-slate-100 h-20">
-          <div className="bg-[#2980B9] p-2 rounded-lg shrink-0">
-            <Package className="text-white" size={24} />
+        <div className="p-6 flex items-center justify-between border-b border-slate-100 h-20">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-50 p-2 rounded-xl shrink-0">
+              <Infinity className="text-[#2980B9]" size={24} />
+            </div>
+            {isSidebarOpen && (
+              <div className="overflow-hidden">
+                <h1 className="text-xl font-bold text-[#2980B9] leading-none truncate">CicloLog</h1>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Soluções Integradas</p>
+              </div>
+            )}
           </div>
-          {isSidebarOpen && <h1 className="text-xl font-bold text-[#2980B9] truncate">RetiraAqui</h1>}
+          {/* Mobile Close Button */}
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 md:hidden"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
@@ -794,7 +826,7 @@ export default function App() {
               icon={Package} 
               label={isSidebarOpen ? "Área do Cliente" : ""} 
               active={activeMenu === 'cliente'} 
-              onClick={() => setActiveMenu('cliente')} 
+              onClick={() => handleMenuClick('cliente')} 
             />
           )}
           {userRole === 'admin' && (
@@ -803,13 +835,13 @@ export default function App() {
                 icon={LayoutDashboard} 
                 label={isSidebarOpen ? "Dashboard Logístico" : ""} 
                 active={activeMenu === 'dashboard'} 
-                onClick={() => setActiveMenu('dashboard')} 
+                onClick={() => handleMenuClick('dashboard')} 
               />
               <SidebarItem 
                 icon={ListIcon} 
                 label={isSidebarOpen ? "Todas as Cotações" : ""} 
                 active={activeMenu === 'cotacoes'} 
-                onClick={() => setActiveMenu('cotacoes')} 
+                onClick={() => handleMenuClick('cotacoes')} 
               />
             </>
           )}
@@ -819,16 +851,28 @@ export default function App() {
                 icon={Truck} 
                 label={isSidebarOpen ? "Área do Parceiro" : ""} 
                 active={activeMenu === 'parceiro'} 
-                onClick={() => setActiveMenu('parceiro')} 
+                onClick={() => handleMenuClick('parceiro')} 
               />
               <SidebarItem 
                 icon={ListIcon} 
                 label={isSidebarOpen ? "Minhas Cotações" : ""} 
                 active={activeMenu === 'cotacoes'} 
-                onClick={() => setActiveMenu('cotacoes')} 
+                onClick={() => handleMenuClick('cotacoes')} 
               />
             </>
           )}
+          
+          <div className="h-px bg-slate-100 my-4 mx-2" />
+          
+          <SidebarItem 
+            icon={MessageCircle} 
+            label={isSidebarOpen ? "Fale no WhatsApp" : ""} 
+            active={false} 
+            onClick={() => {
+              window.open('https://wa.me/5511999999999', '_blank');
+              if (window.innerWidth < 768) setIsSidebarOpen(false);
+            }} 
+          />
         </nav>
 
         <div className="p-4 border-t border-slate-100 space-y-2">
@@ -860,13 +904,18 @@ export default function App() {
             <div className="bg-[#2980B9] p-1.5 rounded-lg">
               <Package className="text-white" size={18} />
             </div>
-            <h1 className="text-lg font-bold text-[#2980B9]">RetiraAqui</h1>
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-50 p-2 rounded-xl">
+              <Infinity className="text-[#2980B9]" size={20} />
+            </div>
+            <h1 className="text-lg font-bold text-[#2980B9]">CicloLog</h1>
+          </div>
           </div>
           <button 
-            onClick={() => setIsSidebarOpen(true)}
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
           >
-            <Menu size={24} />
+            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </header>
 
@@ -2007,10 +2056,14 @@ export default function App() {
         {/* History Modal */}
         {/* Collection Details Modal */}
         {viewCollectionDetailsId && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div 
+            key="collection-details-modal"
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6"
+          >
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden"
             >
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
@@ -2086,10 +2139,14 @@ export default function App() {
         )}
 
         {viewHistoryId && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div 
+            key="history-modal"
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6"
+          >
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden"
             >
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
@@ -2107,6 +2164,7 @@ export default function App() {
 
         {notification && (
           <motion.div
+            key="notification"
             initial={{ opacity: 0, y: 50, x: '-50%' }}
             animate={{ opacity: 1, y: 0, x: '-50%' }}
             exit={{ opacity: 0, y: 50, x: '-50%' }}

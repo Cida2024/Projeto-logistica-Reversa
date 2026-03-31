@@ -1,6 +1,6 @@
 {
-  "name": "RetiraAqui - Logística Reversa Fácil",
-  "description": "Plataforma de logística reversa para solicitações de devolução, monitoramento de SLA e registro de coletas.",
+  "name": "CicloLog - Soluções Integradas",
+  "description": "Plataforma inteligente de logística reversa e gestão de coletas, conectando clientes, administradores e parceiros logísticos.",
   "requestFramePermissions": [
     "camera"
   ]
