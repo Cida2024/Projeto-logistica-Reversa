@@ -14,6 +14,8 @@ import {
   Clock,
   Menu,
   X,
+  Eye,
+  Check,
   Search,
   LogIn,
   LogOut,
@@ -27,7 +29,9 @@ import {
   Download,
   FileUp,
   Infinity,
-  MessageCircle
+  MessageCircle,
+  Star,
+  ThumbsUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -87,6 +91,7 @@ interface Request {
   arrivalTimestamp?: string;
   collectionStartTimestamp?: string;
   collectionEndTimestamp?: string;
+  partnerLink?: string;
   counterOffer?: {
     price: number;
     deadline: string;
@@ -104,6 +109,16 @@ interface Quote {
   deliveryLocation: string;
   status: 'Pendente' | 'Aprovado' | 'Recusado';
   createdAt: string;
+}
+
+interface SurveyResponse {
+  id: string;
+  requestId: string;
+  responderRole: 'cliente' | 'parceiro';
+  nps: number; // 0-10
+  csat: number; // 1-5
+  comment?: string;
+  timestamp: string;
 }
 
 // --- Mock Data ---
@@ -161,11 +176,29 @@ const INITIAL_REQUESTS: Request[] = [
     clientName: 'Marcos Paz', 
     address: 'Rua D, 101', 
     collectorName: 'Ricardo Oliveira',
+    partnerLink: 'https://wa.me/5511999999999',
     history: [
       { status: 'Pendente de Precificação', timestamp: '29/03/2026, 06:00:00' },
       { status: 'Disponível para Parceiros', timestamp: '29/03/2026, 07:00:00' },
       { status: 'Aguardando Coleta', timestamp: '29/03/2026, 07:30:00', note: 'Aceito por Ricardo Oliveira' },
       { status: 'Em Rota', timestamp: '29/03/2026, 08:00:00', note: 'Parceiro a caminho' }
+    ]
+  },
+  { 
+    id: '#105', 
+    status: 'Coletado', 
+    sla: '2 horas', 
+    priority: 'alta', 
+    clientName: 'Ana Souza', 
+    address: 'Rua E, 202', 
+    collectorName: 'João Silva',
+    partnerLink: 'https://wa.me/5511888888888',
+    history: [
+      { status: 'Pendente de Precificação', timestamp: '30/03/2026, 09:00:00' },
+      { status: 'Disponível para Parceiros', timestamp: '30/03/2026, 10:00:00' },
+      { status: 'Aguardando Coleta', timestamp: '30/03/2026, 10:30:00', note: 'Aceito por João Silva' },
+      { status: 'Em Rota', timestamp: '30/03/2026, 11:00:00' },
+      { status: 'Coletado', timestamp: '30/03/2026, 12:00:00', note: 'Produto coletado' }
     ]
   },
 ];
@@ -199,6 +232,12 @@ const CHART_DATA = [
   { name: 'Qua', coletas: 5 },
   { name: 'Qui', coletas: 8 },
   { name: 'Sex', coletas: 6 },
+];
+
+const INITIAL_SURVEYS: SurveyResponse[] = [
+  { id: 'S-1', requestId: '#100', nps: 10, csat: 5, comment: 'Excelente serviço!', timestamp: '2026-03-30T10:00:00Z', responderRole: 'cliente' },
+  { id: 'S-2', requestId: '#099', nps: 9, csat: 4, comment: 'Muito rápido.', timestamp: '2026-03-30T11:00:00Z', responderRole: 'parceiro' },
+  { id: 'S-3', requestId: '#098', nps: 6, csat: 3, comment: 'Poderia ser melhor.', timestamp: '2026-03-30T12:00:00Z', responderRole: 'cliente' },
 ];
 
 // --- Components ---
@@ -273,37 +312,155 @@ const StatusTimelineItem = ({
   </div>
 );
 
-const RequestHistory = ({ history, isClient }: { history: HistoryEntry[], isClient?: boolean }) => (
-  <div className="space-y-4">
-    {history.map((entry, idx) => {
-      const displayStatus = isClient && entry.status === 'Pendente de Precificação' 
-        ? 'Solicitação de retirada recebida' 
-        : entry.status;
-        
-      return (
-        <div key={idx} className="flex gap-4 relative">
-          {idx !== history.length - 1 && (
-            <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-slate-100" />
-          )}
-          <div className={cn(
-            "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 z-10",
-            idx === history.length - 1 ? "bg-blue-500 border-blue-500" : "bg-white border-slate-200"
-          )}>
+const RequestHistory = ({ history, isClient }: { history: HistoryEntry[], isClient?: boolean }) => {
+  const filteredHistory = isClient 
+    ? history.filter(entry => !['Disponível para Parceiros', 'Contraproposta Enviada'].includes(entry.status))
+    : history;
+
+  return (
+    <div className="space-y-4">
+      {filteredHistory.map((entry, idx) => {
+        const displayStatus = isClient && entry.status === 'Pendente de Precificação' 
+          ? 'Solicitação de retirada recebida' 
+          : entry.status;
+          
+        // Hide notes that mention pricing for clients
+        const displayNote = isClient && entry.note?.includes('R$') 
+          ? null 
+          : entry.note;
+
+        return (
+          <div key={idx} className="flex gap-4 relative">
+            {idx !== filteredHistory.length - 1 && (
+              <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-slate-100" />
+            )}
             <div className={cn(
-              "w-2 h-2 rounded-full",
-              idx === history.length - 1 ? "bg-white" : "bg-slate-300"
-            )} />
+              "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 z-10",
+              idx === filteredHistory.length - 1 ? "bg-blue-500 border-blue-500" : "bg-white border-slate-200"
+            )}>
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                idx === filteredHistory.length - 1 ? "bg-white" : "bg-slate-300"
+              )} />
+            </div>
+            <div className="pb-6">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{entry.timestamp}</p>
+              <p className="font-bold text-slate-800">{displayStatus}</p>
+              {displayNote && <p className="text-sm text-slate-500 mt-1">{displayNote}</p>}
+            </div>
           </div>
-          <div className="pb-6">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{entry.timestamp}</p>
-            <p className="font-bold text-slate-800">{displayStatus}</p>
-            {entry.note && <p className="text-sm text-slate-500 mt-1">{entry.note}</p>}
+        );
+      })}
+    </div>
+  );
+};
+
+const SatisfactionSurvey = ({ requestId, onSubmit, onCancel }: { requestId: string, onSubmit: (survey: any) => void, onCancel: () => void }) => {
+  const [nps, setNps] = useState<number | null>(null);
+  const [csat, setCsat] = useState<number | null>(null);
+  const [comment, setComment] = useState('');
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-white rounded-[32px] shadow-2xl max-w-lg w-full overflow-hidden"
+      >
+        <div className="bg-[#2980B9] p-8 text-white text-center relative">
+          <div className="absolute top-4 right-4">
+            <button onClick={onCancel} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <X size={20} />
+            </button>
           </div>
+          <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
+            <ThumbsUp size={32} />
+          </div>
+          <h3 className="text-2xl font-bold">Sua opinião importa!</h3>
+          <p className="text-blue-100 mt-2">Ajude-nos a melhorar o CicloLog para você.</p>
         </div>
-      );
-    })}
-  </div>
-);
+
+        <div className="p-8 space-y-8">
+          {/* NPS */}
+          <div>
+            <p className="font-bold text-slate-800 mb-4 text-center">
+              Em uma escala de 0 a 10, qual a probabilidade de você nos recomendar?
+            </p>
+            <div className="flex justify-between gap-1">
+              {[...Array(11)].map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setNps(i)}
+                  className={cn(
+                    "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                    nps === i 
+                      ? "bg-[#2980B9] text-white scale-110 shadow-lg" 
+                      : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                  )}
+                >
+                  {i}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-between mt-2 px-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Nada Provável</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Muito Provável</span>
+            </div>
+          </div>
+
+          {/* CSAT */}
+          <div>
+            <p className="font-bold text-slate-800 mb-4 text-center">
+              Como você avalia sua satisfação com o serviço prestado?
+            </p>
+            <div className="flex justify-center gap-4">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setCsat(star)}
+                  className={cn(
+                    "transition-all transform hover:scale-110",
+                    csat && csat >= star ? "text-yellow-400" : "text-slate-200"
+                  )}
+                >
+                  <Star size={40} fill={csat && csat >= star ? "currentColor" : "none"} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Comment */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Comentário Adicional (Opcional)</label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Conte-nos mais sobre sua experiência..."
+              className="w-full p-4 rounded-2xl border-2 border-slate-100 focus:border-[#2980B9] focus:ring-0 transition-all resize-none h-24"
+            />
+          </div>
+
+          <button
+            disabled={nps === null || csat === null}
+            onClick={() => onSubmit({ requestId, nps, csat, comment })}
+            className={cn(
+              "w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg",
+              nps !== null && csat !== null
+                ? "bg-[#2ECC71] text-white hover:bg-[#27ae60] shadow-green-100"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
+            )}
+          >
+            Enviar Avaliação
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 export default function App() {
   const [userRole, setUserRole] = useState<Role>(null);
@@ -322,6 +479,9 @@ export default function App() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>(INITIAL_QUOTES);
+  const [surveys, setSurveys] = useState<SurveyResponse[]>(INITIAL_SURVEYS);
+  const [showSurveyId, setShowSurveyId] = useState<string | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<'geral' | 'satisfacao'>('geral');
   const [quotingRequestId, setQuotingRequestId] = useState<string | null>(null);
   const [pricingRequestId, setPricingRequestId] = useState<string | null>(null);
   const [reviewingCounterOfferId, setReviewingCounterOfferId] = useState<string | null>(null);
@@ -429,6 +589,15 @@ export default function App() {
     } : r));
     setSelectedRequestId(id);
     showNotification('info', `Você assumiu a coleta ${id}!`);
+  };
+
+  const handleRejectOrder = (id: string) => {
+    setRequests(requests.map(r => r.id === id ? { 
+      ...r, 
+      status: 'Cancelado', 
+      history: [...r.history, { status: 'Cancelado', timestamp: new Date().toLocaleString('pt-BR'), note: 'Recusado pelo parceiro logístico' }]
+    } : r));
+    showNotification('info', `Solicitação ${id} recusada.`);
   };
 
   const handleStartTrip = (id: string) => {
@@ -604,7 +773,10 @@ export default function App() {
         history: [...r.history, { status: 'Finalizado (Financeiro)', timestamp: new Date().toLocaleString('pt-BR'), note: 'Processamento concluído' }]
       } : r));
       showNotification('success', 'Tratativas concluídas. O financeiro entrará em contato.');
+      const currentId = selectedRequestId;
       setSelectedRequestId(null);
+      // Trigger survey for client
+      setShowSurveyId(currentId);
     }, 6000);
   };
 
@@ -641,18 +813,35 @@ export default function App() {
   };
 
   const handleInvoiceUpload = (id: string, file: File) => {
-    // Simulate upload
-    const fakeUrl = URL.createObjectURL(file);
-    setRequests(requests.map(r => r.id === id ? { 
-      ...r, 
-      invoiceUrl: fakeUrl,
-      history: [...r.history, { 
-        status: r.status, 
-        timestamp: new Date().toLocaleString('pt-BR'), 
-        note: `Nota Fiscal anexada: ${file.name}` 
-      }]
-    } : r));
-    showNotification('success', `Nota Fiscal anexada à solicitação ${id}!`);
+    // ...
+  };
+
+  const handleSurveySubmit = (survey: Omit<SurveyResponse, 'id' | 'timestamp' | 'responderRole'>) => {
+    if (!userRole) return;
+    const newSurvey: SurveyResponse = {
+      ...survey,
+      id: `S-${Date.now()}`,
+      responderRole: userRole as 'cliente' | 'parceiro',
+      timestamp: new Date().toISOString()
+    };
+    setSurveys([newSurvey, ...surveys]);
+    setShowSurveyId(null);
+    showNotification('success', 'Obrigado pelo seu feedback!');
+  };
+
+  const calculateNPS = (role?: 'cliente' | 'parceiro') => {
+    const filteredSurveys = role ? surveys.filter(s => s.responderRole === role) : surveys;
+    if (filteredSurveys.length === 0) return 0;
+    const promoters = filteredSurveys.filter(s => s.nps >= 9).length;
+    const detractors = filteredSurveys.filter(s => s.nps <= 6).length;
+    return Math.round(((promoters - detractors) / filteredSurveys.length) * 100);
+  };
+
+  const calculateCSAT = (role?: 'cliente' | 'parceiro') => {
+    const filteredSurveys = role ? surveys.filter(s => s.responderRole === role) : surveys;
+    if (filteredSurveys.length === 0) return 0;
+    const sum = filteredSurveys.reduce((acc, s) => acc + s.csat, 0);
+    return (sum / filteredSurveys.length).toFixed(1);
   };
 
   const selectedRequest = requests.find(r => r.id === selectedRequestId);
@@ -762,7 +951,7 @@ export default function App() {
                   <Package className="text-slate-500 group-hover:text-white" size={28} />
                 </div>
                 <div className="flex-1">
-                  <p className="font-bold text-slate-900 text-lg">Sou Cliente</p>
+                  <p className="font-bold text-slate-900 text-lg">Enviar Solicitação</p>
                   <p className="text-sm text-slate-500">Solicitar devolução ou troca</p>
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#2ECC71]">
@@ -1114,7 +1303,13 @@ export default function App() {
                         { status: 'Finalizado (Financeiro)', label: 'Financeiro em Contato', desc: 'Processo concluído. Nosso time financeiro entrará em contato para o reembolso/troca.' }
                       ];
 
-                      const currentIdx = stages.findIndex(s => s.status === req.status);
+                      // Map internal statuses to client-facing stages
+                      let effectiveStatus = req.status;
+                      if (['Disponível para Parceiros', 'Contraproposta Enviada'].includes(req.status)) {
+                        effectiveStatus = 'Pendente de Precificação';
+                      }
+
+                      const currentIdx = stages.findIndex(s => s.status === effectiveStatus);
 
                       return (
                         <div className="space-y-8">
@@ -1129,9 +1324,53 @@ export default function App() {
                               />
                             ))}
                           </div>
+
+                          {['Coletado', 'Em Trânsito', 'Em Processamento', 'Finalizado (Financeiro)'].includes(req.status) && (
+                            <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 space-y-4">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-blue-100 p-2 rounded-lg">
+                                  <Truck className="text-[#2980B9]" size={20} />
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Rastreamento da Entrega</p>
+                                  <p className="text-slate-800 font-bold">Status Atual: {effectiveStatus}</p>
+                                </div>
+                              </div>
+                              
+                              {req.collectorName && (
+                                <div className="flex items-center justify-between pt-2 border-t border-blue-100">
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Parceiro Logístico</p>
+                                    <p className="text-sm font-bold text-slate-700">{req.collectorName}</p>
+                                  </div>
+                                  {req.partnerLink && (
+                                    <a 
+                                      href={req.partnerLink} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-2 text-[#2980B9] font-bold text-sm hover:underline"
+                                    >
+                                      Ver Perfil / Contato <MessageSquare size={14} />
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                           
                           <div className="pt-8 border-t border-slate-100">
-                            <h4 className="text-lg font-bold text-slate-800 mb-6">Histórico Detalhado</h4>
+                            <div className="flex justify-between items-center mb-6">
+                              <h4 className="text-lg font-bold text-slate-800">Histórico Detalhado</h4>
+                              {req.status === 'Finalizado (Financeiro)' && !surveys.some(s => s.requestId === req.id && s.responderRole === 'cliente') && (
+                                <button 
+                                  onClick={() => setShowSurveyId(req.id)}
+                                  className="bg-[#2980B9] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-100 hover:scale-105 transition-all flex items-center gap-2"
+                                >
+                                  <ThumbsUp size={16} />
+                                  Avaliar Serviço
+                                </button>
+                              )}
+                            </div>
                             <RequestHistory history={req.history} isClient />
                           </div>
                         </div>
@@ -1156,17 +1395,62 @@ export default function App() {
                   <h2 className="text-3xl font-bold text-slate-800">📊 Painel de Controle</h2>
                   <p className="text-slate-500 mt-2">Visão geral das operações de logística reversa.</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-slate-400 uppercase tracking-widest">Última atualização</p>
-                  <p className="text-slate-600 font-bold">Hoje, 10:45</p>
+                <div className="flex gap-2 bg-slate-100 p-1 rounded-2xl">
+                  <button 
+                    onClick={() => setDashboardTab('geral')}
+                    className={cn(
+                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                      dashboardTab === 'geral' ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Geral
+                  </button>
+                  <button 
+                    onClick={() => setDashboardTab('satisfacao')}
+                    className={cn(
+                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                      dashboardTab === 'satisfacao' ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Satisfação
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <MetricCard label="Pendentes Precificação" value={requests.filter(r => r.status === 'Pendente de Precificação').length.toString()} icon={Package} color="bg-orange-500" />
-                <MetricCard label="SLA em Alerta" value={requests.filter(r => r.priority === 'alta' && !['Finalizado (Financeiro)'].includes(r.status)).length.toString()} icon={AlertCircle} color="bg-red-500" />
-                <MetricCard label="Coletas Hoje" value={requests.filter(r => r.status === 'Finalizado (Financeiro)').length.toString()} icon={Truck} color="bg-[#2ECC71]" />
-              </div>
+              {dashboardTab === 'geral' ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <MetricCard label="Pendentes Precificação" value={requests.filter(r => r.status === 'Pendente de Precificação').length.toString()} icon={Package} color="bg-orange-500" />
+                    <MetricCard label="SLA em Alerta" value={requests.filter(r => r.priority === 'alta' && !['Finalizado (Financeiro)'].includes(r.status)).length.toString()} icon={AlertCircle} color="bg-red-500" />
+                    <MetricCard label="Coletas Hoje" value={requests.filter(r => r.status === 'Finalizado (Financeiro)').length.toString()} icon={Truck} color="bg-[#2ECC71]" />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-6">
+                      <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center text-[#2ECC71]">
+                        <ThumbsUp size={32} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">NPS Geral</p>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-black text-slate-800">{calculateNPS()}</span>
+                          <span className="text-xs font-bold text-[#2ECC71]">Zona de Excelência</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-6">
+                      <div className="w-16 h-16 rounded-2xl bg-yellow-50 flex items-center justify-center text-yellow-500">
+                        <Star size={32} fill="currentColor" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">CSAT Geral</p>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-black text-slate-800">{calculateCSAT()}</span>
+                          <span className="text-xs font-bold text-yellow-500">Satisfação Média</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
               {/* Seção de Precificação (ADM) */}
               {requests.some(r => r.status === 'Pendente de Precificação') && (
@@ -1477,8 +1761,111 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </>
+          ) : (
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Cliente Satisfaction */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Package size={16} /> Satisfação do Cliente
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase">NPS Cliente</p>
+                        <p className="text-2xl font-black text-slate-800">{calculateNPS('cliente')}</p>
+                      </div>
+                      <div className={cn(
+                        "w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold",
+                        calculateNPS('cliente') >= 70 ? "bg-[#2ECC71]" : calculateNPS('cliente') >= 50 ? "bg-blue-500" : "bg-orange-500"
+                      )}>
+                        {calculateNPS('cliente')}
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase">CSAT Cliente</p>
+                        <p className="text-2xl font-black text-slate-800">{calculateCSAT('cliente')}</p>
+                      </div>
+                      <div className="flex gap-0.5 text-yellow-400">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star key={star} size={16} fill={Number(calculateCSAT('cliente')) >= star ? "currentColor" : "none"} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Parceiro Satisfaction */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Truck size={16} /> Satisfação do Parceiro
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase">NPS Parceiro</p>
+                        <p className="text-2xl font-black text-slate-800">{calculateNPS('parceiro')}</p>
+                      </div>
+                      <div className={cn(
+                        "w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold",
+                        calculateNPS('parceiro') >= 70 ? "bg-[#2ECC71]" : calculateNPS('parceiro') >= 50 ? "bg-blue-500" : "bg-orange-500"
+                      )}>
+                        {calculateNPS('parceiro')}
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase">CSAT Parceiro</p>
+                        <p className="text-2xl font-black text-slate-800">{calculateCSAT('parceiro')}</p>
+                      </div>
+                      <div className="flex gap-0.5 text-yellow-400">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star key={star} size={16} fill={Number(calculateCSAT('parceiro')) >= star ? "currentColor" : "none"} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                <h3 className="text-lg font-bold text-slate-800 mb-6">Comentários Recentes</h3>
+                <div className="space-y-4">
+                  {surveys.filter(s => s.comment).slice(0, 10).map((survey) => (
+                    <div key={survey.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full",
+                            survey.responderRole === 'cliente' ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                          )}>
+                            {survey.responderRole}
+                          </span>
+                          <span className="font-bold text-slate-700 text-sm">{survey.requestId}</span>
+                          <div className="flex gap-0.5 text-yellow-400">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} size={12} fill={i < survey.csat ? "currentColor" : "none"} />
+                            ))}
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {new Date(survey.timestamp).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 italic">"{survey.comment}"</p>
+                    </div>
+                  ))}
+                  {surveys.filter(s => s.comment).length === 0 && (
+                    <p className="text-center text-slate-400 py-8 italic">Nenhum comentário recebido ainda.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
+        </motion.div>
+      )}
 
           {activeMenu === 'parceiro' && (
             <motion.div
@@ -1578,16 +1965,22 @@ export default function App() {
 
                             <div className="flex flex-col gap-3 justify-center min-w-[200px]">
                               <button 
-                                onClick={() => handleAcceptOrder(req.id, 'Parceiro Logístico')}
-                                className="w-full bg-[#2ECC71] text-white py-3 rounded-xl font-bold hover:bg-[#27ae60] transition-all shadow-lg shadow-green-100"
+                                onClick={() => setSelectedRequestId(req.id)}
+                                className="w-full bg-blue-50 text-[#2980B9] py-3 rounded-xl font-bold hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
                               >
-                                Aceitar Frete
+                                <Eye size={18} /> Ver Detalhes
                               </button>
                               <button 
-                                onClick={() => setCounterOfferingId(counterOfferingId === req.id ? null : req.id)}
-                                className="w-full bg-white border-2 border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all"
+                                onClick={() => handleAcceptOrder(req.id, 'Parceiro Logístico')}
+                                className="w-full bg-[#2ECC71] text-white py-3 rounded-xl font-bold hover:bg-[#27ae60] transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2"
                               >
-                                {counterOfferingId === req.id ? 'Cancelar' : 'Fazer Contraproposta'}
+                                <Check size={18} /> Aceitar
+                              </button>
+                              <button 
+                                onClick={() => handleRejectOrder(req.id)}
+                                className="w-full bg-white border-2 border-red-100 text-red-500 py-3 rounded-xl font-bold hover:bg-red-50 transition-all flex items-center justify-center gap-2"
+                              >
+                                <X size={18} /> Recusar
                               </button>
                             </div>
                           </div>
@@ -2107,6 +2500,13 @@ export default function App() {
       <AnimatePresence>
         {/* History Modal */}
         {/* Collection Details Modal */}
+        {showSurveyId && (
+          <SatisfactionSurvey 
+            requestId={showSurveyId}
+            onSubmit={handleSurveySubmit}
+            onCancel={() => setShowSurveyId(null)}
+          />
+        )}
         {viewCollectionDetailsId && (
           <div 
             key="collection-details-modal"
